@@ -10,7 +10,7 @@ export default function Suppliers() {
     // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentSupplier, setCurrentSupplier] = useState(null);
-    const [formData, setFormData] = useState({ name: '', role: '', contact_info: '' });
+    const [formData, setFormData] = useState({ name: '', role: '', contact_info: '', default_price: '', currency: 'Shekel' });
 
     useEffect(() => {
         fetchSuppliers();
@@ -56,10 +56,10 @@ export default function Suppliers() {
     const openModal = (supplier = null) => {
         if (supplier) {
             setCurrentSupplier(supplier);
-            setFormData({ name: supplier.name, role: supplier.role, contact_info: supplier.contact_info || '' });
+            setFormData({ name: supplier.name, role: supplier.role, contact_info: supplier.contact_info || '', default_price: supplier.default_price || '', currency: supplier.currency || 'Shekel' });
         } else {
             setCurrentSupplier(null);
-            setFormData({ name: '', role: '', contact_info: '' });
+            setFormData({ name: '', role: '', contact_info: '', default_price: '', currency: 'Shekel' });
         }
         setIsModalOpen(true);
     };
@@ -105,6 +105,7 @@ export default function Suppliers() {
                             <h3 className="text-xl font-bold text-slate-100">{s.name}</h3>
                             <p className="text-purple-400 font-medium">{s.role}</p>
                             <p className="text-slate-400 text-sm mt-2">{s.contact_info || 'אין פרטי קשר'}</p>
+                            {s.default_price ? <p className="text-emerald-400 text-sm mt-1 font-medium">מחיר ברירת מחדל: {s.currency === 'Dollar' ? '$' : s.currency === 'Euro' ? '€' : '₪'}{s.default_price}</p> : null}
                         </div>
                         <div className="flex gap-2 mt-6 justify-end">
                             <button onClick={() => openModal(s)} className="p-2 bg-slate-700 hover:bg-slate-600 text-blue-400 rounded-lg transition">
@@ -151,6 +152,30 @@ export default function Suppliers() {
                                     onChange={e => setFormData({ ...formData, contact_info: e.target.value })}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 transition"
                                 />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">מחיר ברירת מחדל (לא חובה)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={formData.default_price}
+                                        onChange={e => setFormData({ ...formData, default_price: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 transition"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">מטבע</label>
+                                    <select
+                                        value={formData.currency}
+                                        onChange={e => setFormData({ ...formData, currency: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 transition"
+                                    >
+                                        <option value="Shekel">שקל (₪)</option>
+                                        <option value="Dollar">דולר ($)</option>
+                                        <option value="Euro">יורו (€)</option>
+                                    </select>
+                                </div>
                             </div>
                             <div className="flex gap-3 justify-end mt-6">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-400 hover:text-white transition">ביטול</button>
