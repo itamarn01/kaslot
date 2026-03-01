@@ -1,6 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiDollarSign, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch } from 'react-icons/fi';
+import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch } from 'react-icons/fi';
+import Select from 'react-select';
+
+const customSelectStyles = {
+    control: (base, state) => ({
+        ...base,
+        backgroundColor: '#0f172a',
+        borderColor: state.isFocused ? '#3b82f6' : '#334155',
+        color: '#f1f5f9',
+        borderRadius: '0.5rem',
+        padding: '0.15rem 0',
+        boxShadow: state.isFocused ? '0 0 0 1px #3b82f6' : 'none',
+        '&:hover': {
+            borderColor: '#3b82f6'
+        }
+    }),
+    menu: (base) => ({
+        ...base,
+        backgroundColor: '#1e293b',
+        borderRadius: '0.5rem',
+        marginTop: '0.25rem',
+        zIndex: 50,
+    }),
+    option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isFocused ? '#334155' : 'transparent',
+        color: state.isFocused ? '#f1f5f9' : '#cbd5e1',
+        cursor: 'pointer',
+        '&:active': {
+            backgroundColor: '#475569'
+        }
+    }),
+    singleValue: (base) => ({
+        ...base,
+        color: '#f1f5f9',
+    }),
+    input: (base) => ({
+        ...base,
+        color: '#f1f5f9',
+    }),
+    placeholder: (base) => ({
+        ...base,
+        color: '#94a3b8',
+    }),
+    noOptionsMessage: (base) => ({
+        ...base,
+        color: '#94a3b8',
+    })
+};
 
 export default function Events() {
     const [events, setEvents] = useState([]);
@@ -9,22 +57,16 @@ export default function Events() {
     const [expandedEventId, setExpandedEventId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Modal specific states
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
-    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isEditEventMode, setIsEditEventMode] = useState(false);
     const [isEditSupplierMode, setIsEditSupplierMode] = useState(false);
-    const [supplierModalSearchTerm, setSupplierModalSearchTerm] = useState('');
 
-    // Form states
     const [eventForm, setEventForm] = useState({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel' });
     const [currentEventId, setCurrentEventId] = useState(null);
 
     const [supplierForm, setSupplierForm] = useState({ supplierId: '', expectedPay: '', currency: 'Shekel' });
-    const [currentParticipantId, setCurrentParticipantId] = useState(null); // supplierId in event context
-
-    const [paymentForm, setPaymentForm] = useState({ supplierId: '', amount: '', currency: 'Shekel', method: 'Cash' });
+    const [currentParticipantId, setCurrentParticipantId] = useState(null);
 
     const getCurrencySymbol = (currency) => {
         switch (currency) {
@@ -45,8 +87,6 @@ export default function Events() {
                 api.get('/events'),
                 api.get('/suppliers')
             ]);
-            // For each event, we should ideally fetch its payments, or backend could aggregate
-            // Since backend doesn't aggregate payments per event yet in GET /events, let's fetch payments
             const paymentsRes = await api.get('/payments');
             const payments = paymentsRes.data;
 
@@ -64,7 +104,6 @@ export default function Events() {
         }
     };
 
-    // Event Handlers
     const handleCreateOrUpdateEvent = async (e) => {
         e.preventDefault();
         try {
@@ -103,22 +142,12 @@ export default function Events() {
     };
 
     const handleRemoveSupplierFromEvent = async (eventId, supplierId) => {
-        if (window.confirm('האם אתה בטוח שברצונך להסיר ספק זה מהאירוע? התשלומים המקושרים יימחקו.')) {
+        if (window.confirm('האם אתה בטוח שברצונך להסיר ספק זה מהאירוע?')) {
             try {
                 await api.delete(`/events/${eventId}/participants/${supplierId}`);
                 fetchData();
             } catch (err) { console.error(err); }
         }
-    };
-
-    const handleAddPayment = async (e) => {
-        e.preventDefault();
-        try {
-            await api.post('/payments', { ...paymentForm, eventId: currentEventId });
-            setIsPaymentModalOpen(false);
-            setPaymentForm({ supplierId: '', amount: '', currency: 'Shekel', method: 'Cash' });
-            fetchData();
-        } catch (err) { console.error(err); }
     };
 
     const openEventModal = (ev = null) => {
@@ -143,7 +172,6 @@ export default function Events() {
 
     const openSupplierModal = (eventId, participant = null) => {
         setCurrentEventId(eventId);
-        setSupplierModalSearchTerm('');
         if (participant) {
             setIsEditSupplierMode(true);
             setCurrentParticipantId(participant.supplierId._id);
@@ -156,11 +184,16 @@ export default function Events() {
         setIsSupplierModalOpen(true);
     };
 
-    const openPaymentModal = (eventId, supplierId) => {
-        setCurrentEventId(eventId);
-        setPaymentForm({ ...paymentForm, supplierId });
-        setIsPaymentModalOpen(true);
-    };
+    const currentEvent = events.find(ev => ev._id === currentEventId);
+    const currentParticipantIds = currentEvent?.participants?.map(p => p.supplierId?._id) || [];
+
+    const supplierOptions = suppliers
+        .filter(s => !currentParticipantIds.includes(s._id))
+        .map(s => ({
+            value: s._id,
+            label: `${s.name} (${s.role})`,
+            supplier: s
+        }));
 
     const toggleEventExpand = (id) => {
         setExpandedEventId(expandedEventId === id ? null : id);
@@ -176,6 +209,28 @@ export default function Events() {
             new Date(ev.date).toLocaleDateString('he-IL').includes(search)
         );
     });
+
+    const groupEventsByMonth = (eventsList) => {
+        const sortedEvents = [...eventsList].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const grouped = {};
+        sortedEvents.forEach(ev => {
+            const date = new Date(ev.date);
+            const monthYear = date.toLocaleDateString('he-IL', { month: 'long', year: 'numeric' });
+            if (!grouped[monthYear]) {
+                grouped[monthYear] = {
+                    monthYear,
+                    dateObj: new Date(date.getFullYear(), date.getMonth(), 1),
+                    events: []
+                };
+            }
+            grouped[monthYear].events.push(ev);
+        });
+
+        return Object.values(grouped).sort((a, b) => b.dateObj - a.dateObj);
+    };
+
+    const groupedEvents = groupEventsByMonth(filteredEvents);
 
     return (
         <div className="space-y-6">
@@ -202,135 +257,143 @@ export default function Events() {
             </div>
 
             <div className="space-y-4">
-                {filteredEvents.map(ev => {
-                    const isExpanded = expandedEventId === ev._id;
-                    return (
-                        <div key={ev._id} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-                            {/* Event Header */}
-                            <div
-                                className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center cursor-pointer hover:bg-slate-700/50 transition gap-4"
-                                onClick={() => toggleEventExpand(ev._id)}
-                            >
-                                <div>
-                                    <h3 className="text-xl font-bold text-slate-100">{ev.title}</h3>
-                                    <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-400">
-                                        <span className="flex items-center gap-1"><FiCalendar /> {new Date(ev.date).toLocaleDateString('he-IL')}</span>
-                                        {ev.location && <span className="flex items-center gap-1"><FiMapPin /> {ev.location}</span>}
-                                        {ev.phone_number && <span className="flex items-center gap-1"><FiPhone /> {ev.phone_number}</span>}
-                                        <span className="flex items-center gap-1 text-emerald-400 font-medium">{getCurrencySymbol(ev.currency)}{ev.totalPrice}</span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-4 w-full md:w-auto justify-end">
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); openEventModal(ev); }}
-                                        className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-600 rounded-lg transition"
-                                        title="ערוך אירוע"
-                                    >
-                                        <FiEdit2 size={18} />
-                                    </button>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); handleDeleteEvent(ev._id); }}
-                                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-600 rounded-lg transition"
-                                        title="מחק אירוע"
-                                    >
-                                        <FiTrash2 size={18} />
-                                    </button>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); openSupplierModal(ev._id); }}
-                                        className="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition"
-                                    >
-                                        + הוסף נגן/ספק
-                                    </button>
-                                    {isExpanded ? <FiChevronUp size={24} /> : <FiChevronDown size={24} />}
-                                </div>
-                            </div>
+                {filteredEvents.length === 0 && (
+                    <p className="text-center text-slate-500 py-12">אין אירועים להצגה. הוסף אירוע ראשון!</p>
+                )}
 
-                            {/* Event Details (Expanded) */}
-                            {isExpanded && (
-                                <div className="p-5 border-t border-slate-700 bg-slate-900/50">
-                                    <h4 className="font-bold text-slate-300 mb-4">הרכב / ספקים באירוע:</h4>
-                                    {(!ev.participants || ev.participants.length === 0) ? (
-                                        <p className="text-slate-500 text-sm">טרם צורפו נגנים או ספקים לאירוע זה.</p>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            {ev.participants.map(p => {
-                                                const supplierPayments = ev.payments.filter(pay => pay.supplierId?._id === p.supplierId?._id);
-                                                const totalPaid = supplierPayments.reduce((acc, curr) => acc + curr.amount, 0);
-                                                const balance = p.expectedPay - totalPaid;
+                {groupedEvents.map((group, groupIdx) => (
+                    <div key={groupIdx} className="mb-8">
+                        <h3 className="text-xl font-bold text-slate-100 mb-4 px-2 border-b border-slate-700 pb-2">
+                            {group.monthYear} <span className="text-slate-400 text-sm font-normal">({group.events.length})</span>
+                        </h3>
+                        <div className="space-y-4">
+                            {group.events.map(ev => {
+                                const isExpanded = expandedEventId === ev._id;
+                                const totalExpectedSuppliersPay = ev.participants ? ev.participants.reduce((sum, p) => sum + (p.expectedPay || 0), 0) : 0;
+                                const eventProfit = ev.totalPrice - totalExpectedSuppliersPay;
 
-                                                return (
-                                                    <div key={p._id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                                        <div>
-                                                            <p className="font-bold text-slate-100">{p.supplierId?.name} <span className="text-slate-400 font-normal text-sm">({p.supplierId?.role})</span></p>
-                                                            <div className="flex gap-4 text-sm mt-1">
-                                                                <span>סיכום: <strong className="text-blue-400">{getCurrencySymbol(p.currency)}{p.expectedPay}</strong></span>
-                                                                <span>שולם: <strong className="text-emerald-400">{getCurrencySymbol(p.currency)}{totalPaid}</strong></span>
-                                                                <span>יתרה: <strong className={balance > 0 ? 'text-red-400' : 'text-slate-400'}>{getCurrencySymbol(p.currency)}{balance}</strong></span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="w-full md:w-auto flex flex-col sm:flex-row items-end sm:items-center gap-2">
-                                                            <button
-                                                                onClick={() => openPaymentModal(ev._id, p.supplierId?._id)}
-                                                                className="text-sm bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 px-3 py-1.5 rounded-lg transition"
-                                                            >
-                                                                הוסף תשלום
-                                                            </button>
-                                                            <div className="flex items-center gap-1 mt-2 sm:mt-0">
-                                                                <button
-                                                                    onClick={() => openSupplierModal(ev._id, p)}
-                                                                    className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition"
-                                                                    title="ערוך ספק"
-                                                                >
-                                                                    <FiEdit2 size={16} />
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleRemoveSupplierFromEvent(ev._id, p.supplierId?._id)}
-                                                                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition"
-                                                                    title="הסר ספק"
-                                                                >
-                                                                    <FiTrash2 size={16} />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
+                                return (
+                                    <div key={ev._id} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                        <div
+                                            className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center cursor-pointer hover:bg-slate-700/50 transition gap-4"
+                                            onClick={() => toggleEventExpand(ev._id)}
+                                        >
+                                            <div>
+                                                <h3 className="text-xl font-bold text-slate-100">{ev.title}</h3>
+                                                <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-slate-400">
+                                                    <span className="flex items-center gap-1"><FiCalendar /> {new Date(ev.date).toLocaleDateString('he-IL')}</span>
+                                                    {ev.location && <span className="flex items-center gap-1"><FiMapPin /> {ev.location}</span>}
+                                                    {ev.phone_number && <span className="flex items-center gap-1"><FiPhone /> {ev.phone_number}</span>}
+                                                    <span className="flex items-center gap-1" title="מחיר ללקוח"><span className="text-slate-300">הכנסה:</span> <span className="text-emerald-400 font-medium">{getCurrencySymbol(ev.currency)}{ev.totalPrice}</span></span>
+                                                    <span className="flex items-center gap-1 bg-slate-700/50 px-2 py-0.5 rounded-lg border border-slate-600/50" title="רווח קופה (הכנסה פחות הוצאות ספקים)">
+                                                        <span className="text-slate-300">רווח קופה:</span>
+                                                        <strong className={`${eventProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{getCurrencySymbol(ev.currency)}{eventProfit}</strong>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); openEventModal(ev); }}
+                                                    className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-600 rounded-lg transition"
+                                                    title="ערוך אירוע"
+                                                >
+                                                    <FiEdit2 size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteEvent(ev._id); }}
+                                                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-600 rounded-lg transition"
+                                                    title="מחק אירוע"
+                                                >
+                                                    <FiTrash2 size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); openSupplierModal(ev._id); }}
+                                                    className="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition"
+                                                >
+                                                    + הוסף נגן/ספק
+                                                </button>
+                                                {isExpanded ? <FiChevronUp size={24} /> : <FiChevronDown size={24} />}
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            )}
+
+                                        {isExpanded && (
+                                            <div className="p-5 border-t border-slate-700 bg-slate-900/50">
+                                                <h4 className="font-bold text-slate-300 mb-4">הרכב / ספקים באירוע:</h4>
+                                                {(!ev.participants || ev.participants.length === 0) ? (
+                                                    <p className="text-slate-500 text-sm">טרם צורפו נגנים או ספקים לאירוע זה.</p>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        {ev.participants.map(p => {
+                                                            const supplierPayments = (ev.payments || []).filter(pay => pay.supplierId?._id === p.supplierId?._id);
+                                                            const totalPaid = supplierPayments.reduce((acc, curr) => acc + curr.amount, 0);
+                                                            const balance = p.expectedPay - totalPaid;
+                                                            return (
+                                                                <div key={p._id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                                                                    <div>
+                                                                        <p className="font-bold text-slate-100">{p.supplierId?.name} <span className="text-slate-400 font-normal text-sm">({p.supplierId?.role})</span></p>
+                                                                        <div className="flex gap-4 text-sm mt-1">
+                                                                            <span>סיכום: <strong className="text-blue-400">{getCurrencySymbol(p.currency)}{p.expectedPay}</strong></span>
+                                                                            <span>שולם: <strong className="text-emerald-400">{getCurrencySymbol(p.currency)}{totalPaid}</strong></span>
+                                                                            <span>יתרה: <strong className={balance > 0 ? 'text-red-400' : 'text-slate-400'}>{getCurrencySymbol(p.currency)}{balance}</strong></span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <button
+                                                                            onClick={() => openSupplierModal(ev._id, p)}
+                                                                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition"
+                                                                            title="ערוך ספק"
+                                                                        >
+                                                                            <FiEdit2 size={16} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleRemoveSupplierFromEvent(ev._id, p.supplierId?._id)}
+                                                                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition"
+                                                                            title="הסר ספק"
+                                                                        >
+                                                                            <FiTrash2 size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
-                    );
-                })}
+                    </div>
+                ))}
             </div>
 
-            {/* CREATE EVENT MODAL */}
+            {/* CREATE / EDIT EVENT MODAL */}
             {isEventModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
-                        <h3 className="text-2xl font-bold mb-4">אירוע חדש</h3>
+                        <h3 className="text-2xl font-bold mb-4">{isEditEventMode ? 'ערוך אירוע' : 'אירוע חדש'}</h3>
                         <form onSubmit={handleCreateOrUpdateEvent} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1">שם האירוע</label>
-                                <input required type="text" value={eventForm.title} onChange={e => setEventForm({ ...eventForm, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:border-emerald-500" />
+                                <input required type="text" value={eventForm.title} onChange={e => setEventForm({ ...eventForm, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500" />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1">תאריך</label>
-                                <input required type="date" value={eventForm.date} onChange={e => setEventForm({ ...eventForm, date: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:border-emerald-500" />
+                                <input required type="date" value={eventForm.date} onChange={e => setEventForm({ ...eventForm, date: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500" />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1">מיקום</label>
-                                <input type="text" value={eventForm.location} onChange={e => setEventForm({ ...eventForm, location: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:border-emerald-500" />
+                                <input type="text" value={eventForm.location} onChange={e => setEventForm({ ...eventForm, location: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500" />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1">טלפון של בעל אירוע</label>
-                                <input type="text" value={eventForm.phone_number} onChange={e => setEventForm({ ...eventForm, phone_number: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:border-emerald-500" />
+                                <input type="text" value={eventForm.phone_number} onChange={e => setEventForm({ ...eventForm, phone_number: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">מחיר סגירה (ללהקה)</label>
-                                    <input required type="number" min="0" value={eventForm.totalPrice} onChange={e => setEventForm({ ...eventForm, totalPrice: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:border-emerald-500" />
+                                    <input required type="number" min="0" value={eventForm.totalPrice} onChange={e => setEventForm({ ...eventForm, totalPrice: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">מטבע</label>
@@ -350,7 +413,7 @@ export default function Events() {
                 </div>
             )}
 
-            {/* ADD SUPPLIER TO EVENT MODAL */}
+            {/* ADD / EDIT SUPPLIER MODAL */}
             {isSupplierModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
@@ -359,31 +422,47 @@ export default function Events() {
                             {!isEditSupplierMode && (
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">בחר ספק</label>
+                                    <Select
+                                        options={supplierOptions}
+                                        placeholder="חיפוש נגן לפי שם או תפקיד..."
+                                        styles={customSelectStyles}
+                                        value={supplierOptions.find(opt => opt.value === supplierForm.supplierId) || null}
+                                        onChange={(selectedOption) => {
+                                            if (selectedOption) {
+                                                const s = selectedOption.supplier;
+                                                setSupplierForm(prev => ({
+                                                    ...prev,
+                                                    supplierId: s._id,
+                                                    expectedPay: s.default_price ? s.default_price : prev.expectedPay,
+                                                    currency: s.default_price ? (s.currency || 'Shekel') : prev.currency
+                                                }));
+                                            } else {
+                                                setSupplierForm(prev => ({ ...prev, supplierId: '' }));
+                                            }
+                                        }}
+                                        noOptionsMessage={() => "לא נמצאו תוצאות נוספות. (האם הנגן כבר מקושר לאירוע?)"}
+                                        isClearable
+                                        required
+                                    />
 
-                                    <div className="relative mb-2">
-                                        <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="חיפוש נגן לפי שם או תפקיד..."
-                                            value={supplierModalSearchTerm}
-                                            onChange={(e) => setSupplierModalSearchTerm(e.target.value)}
-                                            className="w-full bg-slate-900 border border-slate-700 rounded-lg pr-10 pl-4 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500"
-                                        />
-                                    </div>
-
-                                    <select required value={supplierForm.supplierId} onChange={e => setSupplierForm({ ...supplierForm, supplierId: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:border-blue-500">
-                                        <option value="">-- בחר ספק --</option>
-                                        {suppliers.filter(s => {
-                                            const term = supplierModalSearchTerm.toLowerCase();
-                                            return s.name.toLowerCase().includes(term) || s.role.toLowerCase().includes(term);
-                                        }).map(s => <option key={s._id} value={s._id}>{s.name} ({s.role})</option>)}
-                                    </select>
+                                    {currentEvent?.participants?.length > 0 && (
+                                        <div className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                                            <p className="text-xs font-semibold text-slate-400 mb-2">כבר משתתפים באירוע:</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {currentEvent.participants.map(p => (
+                                                    <span key={p._id} className="text-xs bg-slate-800 text-slate-300 px-2 py-1.5 rounded-md border border-slate-600">
+                                                        {p.supplierId?.name} ({p.supplierId?.role})
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">שכר מסוכם</label>
-                                    <input required type="number" min="0" value={supplierForm.expectedPay} onChange={e => setSupplierForm({ ...supplierForm, expectedPay: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:border-blue-500" />
+                                    <input required type="number" min="0" value={supplierForm.expectedPay} onChange={e => setSupplierForm({ ...supplierForm, expectedPay: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">מטבע</label>
@@ -402,48 +481,6 @@ export default function Events() {
                     </div>
                 </div>
             )}
-
-            {/* ADD PAYMENT MODAL */}
-            {isPaymentModalOpen && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                    <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
-                        <h3 className="text-2xl font-bold mb-4">רישום תשלום</h3>
-                        <form onSubmit={handleAddPayment} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1">סכום</label>
-                                <input required type="number" min="1" value={paymentForm.amount} onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:border-emerald-500" />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-1">מטבע</label>
-                                    <select value={paymentForm.currency} onChange={e => setPaymentForm({ ...paymentForm, currency: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100">
-                                        <option value="Shekel">שקל (₪)</option>
-                                        <option value="Dollar">דולר ($)</option>
-                                        <option value="Euro">יורו (€)</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-1">אמצעי תשלום</label>
-                                    <select value={paymentForm.method} onChange={e => setPaymentForm({ ...paymentForm, method: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100">
-                                        <option value="Cash">מזומן</option>
-                                        <option value="Bit">ביט</option>
-                                        <option value="Paybox">פייבוקס</option>
-                                        <option value="Bank Transfer">העברה בנקאית</option>
-                                        <option value="Check">צ'ק</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="flex justify-end gap-3 mt-6">
-                                <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="px-4 py-2 text-slate-400">ביטול</button>
-                                <button type="submit" className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-white font-medium">אשר תשלום</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
         </div>
     );
 }
