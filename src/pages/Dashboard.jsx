@@ -227,6 +227,44 @@ export default function Dashboard() {
                     )}
                 </div>
             </div>
+
+            {/* Partner Earnings Section */}
+            {summary?.partnerEarnings?.length > 0 && (
+                <div className="mt-6">
+                    <h3 className="text-2xl font-bold text-slate-100 mb-4">חלוקת רווחים לשותפים</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {summary.partnerEarnings.map(partner => (
+                            <div key={partner._id} className="bg-slate-800 rounded-2xl p-5 border border-slate-700 hover:border-violet-500/30 transition-all duration-300">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-lg font-bold text-slate-100">{partner.name}</h4>
+                                    <span className="bg-violet-500/20 text-violet-400 px-3 py-1 rounded-full text-sm font-bold">
+                                        {partner.percentage}%
+                                    </span>
+                                </div>
+                                {partner.linkedSupplierName && (
+                                    <p className="text-xs text-blue-400 mb-3">🔗 מקושר ל: {partner.linkedSupplierName}</p>
+                                )}
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-400">חלק מרווחים</span>
+                                        <span className="text-violet-400 font-medium">₪{Math.round(partner.profitShare.Shekel).toLocaleString()}</span>
+                                    </div>
+                                    {partner.supplierEarnings.Shekel > 0 && (
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-400">שכר ספק</span>
+                                            <span className="text-blue-400 font-medium">₪{Math.round(partner.supplierEarnings.Shekel).toLocaleString()}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between text-sm pt-2 border-t border-slate-700">
+                                        <span className="text-slate-300 font-bold">סה״כ הכנסות</span>
+                                        <span className="text-emerald-400 font-bold text-lg">₪{Math.round(partner.totalEarnings.Shekel).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
