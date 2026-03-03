@@ -9,6 +9,7 @@ import Settings from './pages/Settings';
 import Payments from './pages/Payments';
 import Partners from './pages/Partners';
 import SupplierReport from './pages/SupplierReport';
+import PartnerReport from './pages/PartnerReport';
 
 function NavLink({ to, icon, label }) {
   const location = useLocation();
@@ -61,6 +62,7 @@ export default function App() {
       <Routes>
         {/* Public share page - no nav */}
         <Route path="/supplier-report/:id" element={<SupplierReport />} />
+        <Route path="/partner-report/:id" element={<PartnerReport />} />
 
         {/* Main app with nav */}
         <Route path="/*" element={

@@ -41,7 +41,7 @@ export default function Partners() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [currentId, setCurrentId] = useState(null);
-    const [form, setForm] = useState({ name: '', percentage: '', linkedSupplierId: '' });
+    const [form, setForm] = useState({ name: '', percentage: '', linkedSupplierIds: [] });
     const [error, setError] = useState('');
 
     useEffect(() => { fetchData(); }, []);
@@ -76,7 +76,7 @@ export default function Partners() {
             const payload = {
                 name: form.name,
                 percentage: Number(form.percentage),
-                linkedSupplierId: form.linkedSupplierId || null
+                linkedSupplierIds: form.linkedSupplierIds
             };
             if (isEditMode) {
                 await api.put(`/partners/${currentId}`, payload);
@@ -84,7 +84,7 @@ export default function Partners() {
                 await api.post('/partners', payload);
             }
             setIsModalOpen(false);
-            setForm({ name: '', percentage: '', linkedSupplierId: '' });
+            setForm({ name: '', percentage: '', linkedSupplierIds: [] });
             fetchData();
         } catch (err) {
             setError(err.response?.data?.message || 'שגיאה בשמירה');
@@ -107,12 +107,12 @@ export default function Partners() {
             setForm({
                 name: partner.name,
                 percentage: partner.percentage,
-                linkedSupplierId: partner.linkedSupplierId?._id || ''
+                linkedSupplierIds: partner.linkedSupplierIds ? partner.linkedSupplierIds.map(s => s._id || s) : []
             });
         } else {
             setIsEditMode(false);
             setCurrentId(null);
-            setForm({ name: '', percentage: '', linkedSupplierId: '' });
+            setForm({ name: '', percentage: '', linkedSupplierIds: [] });
         }
         setError('');
         setIsModalOpen(true);
@@ -171,10 +171,10 @@ export default function Partners() {
                             <div className="flex justify-between items-start mb-4">
                                 <div>
                                     <h3 className="text-xl font-bold text-slate-100">{partner.name}</h3>
-                                    {partner.linkedSupplierId && (
+                                    {partner.linkedSupplierIds && partner.linkedSupplierIds.length > 0 && (
                                         <span className="flex items-center gap-1 text-xs text-blue-400 mt-1">
                                             <FiLink size={12} />
-                                            מקושר ל: {partner.linkedSupplierId.name} ({partner.linkedSupplierId.role})
+                                            מקושר ל: {partner.linkedSupplierIds.map(s => s.name).join(', ')}
                                         </span>
                                     )}
                                 </div>
@@ -257,11 +257,12 @@ export default function Partners() {
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1">קישור לספק (אופציונלי)</label>
                                 <Select
+                                    isMulti
                                     options={supplierOptions}
-                                    placeholder="בחר ספק לקישור..."
+                                    placeholder="בחר ספקים לקישור..."
                                     styles={customSelectStyles}
-                                    value={supplierOptions.find(opt => opt.value === form.linkedSupplierId) || null}
-                                    onChange={(selected) => setForm({ ...form, linkedSupplierId: selected ? selected.value : '' })}
+                                    value={supplierOptions.filter(opt => form.linkedSupplierIds.includes(opt.value))}
+                                    onChange={(selected) => setForm({ ...form, linkedSupplierIds: selected ? selected.map(s => s.value) : [] })}
                                     isClearable
                                 />
                                 <p className="text-xs text-slate-500 mt-1">אם השותף הוא גם ספק/נגן, קשר אותו כדי לראות סה"כ הכנסות משולבות</p>
