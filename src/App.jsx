@@ -1,12 +1,13 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { FiGrid, FiCalendar, FiUsers, FiSettings, FiCreditCard } from 'react-icons/fi';
+import { FiGrid, FiCalendar, FiUsers, FiSettings, FiCreditCard, FiPieChart } from 'react-icons/fi';
 
 import Dashboard from './pages/Dashboard';
 import Events from './pages/Events';
 import Suppliers from './pages/Suppliers';
 import Settings from './pages/Settings';
 import Payments from './pages/Payments';
+import Partners from './pages/Partners';
 import SupplierReport from './pages/SupplierReport';
 
 function NavLink({ to, icon, label }) {
@@ -42,6 +43,7 @@ function Layout({ children }) {
           <NavLink to="/events" icon={<FiCalendar size={22} />} label="אירועים" />
           <NavLink to="/payments" icon={<FiCreditCard size={22} />} label="תשלומים" />
           <NavLink to="/suppliers" icon={<FiUsers size={22} />} label="ספקים" />
+          <NavLink to="/partners" icon={<FiPieChart size={22} />} label="שותפים" />
           <NavLink to="/settings" icon={<FiSettings size={22} />} label="הגדרות" />
         </ul>
       </nav>
@@ -68,6 +70,7 @@ export default function App() {
               <Route path="/events" element={<Events />} />
               <Route path="/payments" element={<Payments />} />
               <Route path="/suppliers" element={<Suppliers />} />
+              <Route path="/partners" element={<Partners />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </Layout>

@@ -53,6 +53,7 @@ const customSelectStyles = {
 export default function Events() {
     const [events, setEvents] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
+    const [partners, setPartners] = useState([]);
     const [loading, setLoading] = useState(true);
     const [expandedEventId, setExpandedEventId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -83,9 +84,10 @@ export default function Events() {
 
     const fetchData = async () => {
         try {
-            const [eventsRes, suppliersRes] = await Promise.all([
+            const [eventsRes, suppliersRes, partnersRes] = await Promise.all([
                 api.get('/events'),
-                api.get('/suppliers')
+                api.get('/suppliers'),
+                api.get('/partners')
             ]);
             const paymentsRes = await api.get('/payments');
             const payments = paymentsRes.data;
@@ -97,6 +99,7 @@ export default function Events() {
 
             setEvents(eventsWithPayments);
             setSuppliers(suppliersRes.data);
+            setPartners(partnersRes.data);
         } catch (err) {
             console.error(err);
         } finally {
@@ -356,6 +359,47 @@ export default function Events() {
                                                                 </div>
                                                             );
                                                         })}
+                                                    </div>
+                                                )}
+
+                                                {/* Partner Earnings Section */}
+                                                {partners.length > 0 && (
+                                                    <div className="mt-6 pt-4 border-t border-slate-700">
+                                                        <h4 className="font-bold text-violet-300 mb-3">💰 רווחי שותפים באירוע:</h4>
+                                                        <div className="space-y-2">
+                                                            {partners.map(partner => {
+                                                                // Calculate profit share for this event
+                                                                const profitShare = eventProfit * (partner.percentage / 100);
+                                                                // Check if partner is linked to a supplier in this event
+                                                                let supplierPay = 0;
+                                                                if (partner.linkedSupplierId) {
+                                                                    const linkedId = partner.linkedSupplierId._id || partner.linkedSupplierId;
+                                                                    const linkedParticipant = (ev.participants || []).find(p => p.supplierId?._id === linkedId);
+                                                                    if (linkedParticipant) {
+                                                                        supplierPay = linkedParticipant.expectedPay || 0;
+                                                                    }
+                                                                }
+                                                                const totalPartnerEarning = profitShare + supplierPay;
+
+                                                                return (
+                                                                    <div key={partner._id} className="bg-slate-800 p-3 rounded-xl border border-violet-500/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-violet-400 font-bold text-sm">{partner.percentage}%</span>
+                                                                            <span className="font-medium text-slate-100">{partner.name}</span>
+                                                                        </div>
+                                                                        <div className="flex flex-wrap gap-3 text-sm">
+                                                                            <span>חלק מרווח: <strong className="text-violet-400">{getCurrencySymbol(ev.currency)}{Math.round(profitShare)}</strong></span>
+                                                                            {supplierPay > 0 && (
+                                                                                <span>שכר ספק: <strong className="text-blue-400">{getCurrencySymbol(ev.currency)}{supplierPay}</strong></span>
+                                                                            )}
+                                                                            <span className="bg-violet-500/10 px-2 py-0.5 rounded-lg">
+                                                                                סה"כ: <strong className="text-emerald-400">{getCurrencySymbol(ev.currency)}{Math.round(totalPartnerEarning)}</strong>
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
