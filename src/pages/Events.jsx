@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
-import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch } from 'react-icons/fi';
+import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch, FiDownload, FiUpload, FiSend } from 'react-icons/fi';
 import Select from 'react-select';
 
 const customSelectStyles = {
@@ -69,6 +69,26 @@ export default function Events() {
     const [supplierForm, setSupplierForm] = useState({ supplierId: '', expectedPay: '', currency: 'Shekel' });
     const [currentParticipantId, setCurrentParticipantId] = useState(null);
 
+    // Calendar invite state
+    const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+    const [calendarEventId, setCalendarEventId] = useState(null);
+    const [selectedSupplierIds, setSelectedSupplierIds] = useState([]);
+    const [calendarSending, setCalendarSending] = useState(false);
+    const [calendarResult, setCalendarResult] = useState(null);
+
+    // Import/Export state
+    const [showDataMenu, setShowDataMenu] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [importResult, setImportResult] = useState(null);
+
+    // Sheets import modal
+    const [isSheetsImportOpen, setIsSheetsImportOpen] = useState(false);
+    const [sheetsUrl, setSheetsUrl] = useState('');
+    const [sheetsImportType, setSheetsImportType] = useState('events');
+
+    const fileInputRef = useRef(null);
+    const dataMenuRef = useRef(null);
+
     const getCurrencySymbol = (currency) => {
         switch (currency) {
             case 'Dollar': return '$';
@@ -80,6 +100,17 @@ export default function Events() {
 
     useEffect(() => {
         fetchData();
+    }, []);
+
+    // Close data menu on outside click
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (dataMenuRef.current && !dataMenuRef.current.contains(e.target)) {
+                setShowDataMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const fetchData = async () => {
@@ -202,6 +233,130 @@ export default function Events() {
         setExpandedEventId(expandedEventId === id ? null : id);
     };
 
+    // ========== Calendar Invite Handlers ==========
+    const openCalendarModal = (eventId) => {
+        const ev = events.find(e => e._id === eventId);
+        if (!ev || !ev.participants || ev.participants.length === 0) {
+            alert('אין ספקים באירוע זה. הוסף ספקים תחילה.');
+            return;
+        }
+        setCalendarEventId(eventId);
+        // Pre-select all suppliers with emails
+        const withEmail = ev.participants
+            .filter(p => {
+                const fullSupplier = suppliers.find(s => s._id === (p.supplierId?._id || p.supplierId));
+                return fullSupplier?.email;
+            })
+            .map(p => p.supplierId?._id || p.supplierId);
+        setSelectedSupplierIds(withEmail);
+        setCalendarResult(null);
+        setIsCalendarModalOpen(true);
+    };
+
+    const handleSendCalendarInvite = async () => {
+        if (selectedSupplierIds.length === 0) {
+            alert('בחר לפחות ספק אחד עם כתובת אימייל.');
+            return;
+        }
+        setCalendarSending(true);
+        setCalendarResult(null);
+        try {
+            const res = await api.post('/calendar/send-invite', {
+                eventId: calendarEventId,
+                supplierIds: selectedSupplierIds,
+            });
+            setCalendarResult({ success: true, data: res.data });
+        } catch (err) {
+            setCalendarResult({
+                success: false,
+                message: err.response?.data?.message || 'שגיאה בשליחת זימון',
+            });
+        } finally {
+            setCalendarSending(false);
+        }
+    };
+
+    const toggleSupplierSelection = (supplierId) => {
+        setSelectedSupplierIds(prev =>
+            prev.includes(supplierId)
+                ? prev.filter(id => id !== supplierId)
+                : [...prev, supplierId]
+        );
+    };
+
+    // ========== Export Handlers ==========
+    const handleExportExcel = async (type) => {
+        setShowDataMenu(false);
+        try {
+            const res = await api.get(`/data/export/${type}/excel`, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `${type}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            alert('שגיאה בייצוא: ' + (err.response?.data?.message || err.message));
+        }
+    };
+
+    const handleExportSheets = async (type) => {
+        setShowDataMenu(false);
+        try {
+            const res = await api.post(`/data/export/${type}/sheets`);
+            if (res.data.spreadsheetUrl) {
+                window.open(res.data.spreadsheetUrl, '_blank');
+            }
+            alert(`✅ ${res.data.message}`);
+        } catch (err) {
+            alert('שגיאה: ' + (err.response?.data?.message || err.message));
+        }
+    };
+
+    // ========== Import Handlers ==========
+    const handleImportExcel = async (e, type) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setImporting(true);
+        setImportResult(null);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await api.post(`/data/import/${type}/excel`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setImportResult({ success: true, message: res.data.message });
+            fetchData();
+        } catch (err) {
+            setImportResult({ success: false, message: err.response?.data?.message || 'שגיאה בייבוא' });
+        } finally {
+            setImporting(false);
+            e.target.value = '';
+        }
+    };
+
+    const handleImportSheets = async () => {
+        if (!sheetsUrl) return;
+        setImporting(true);
+        setImportResult(null);
+        try {
+            const res = await api.post('/data/import/sheets', {
+                spreadsheetUrl: sheetsUrl,
+                type: sheetsImportType,
+            });
+            setImportResult({ success: true, message: res.data.message });
+            setIsSheetsImportOpen(false);
+            setSheetsUrl('');
+            fetchData();
+        } catch (err) {
+            setImportResult({ success: false, message: err.response?.data?.message || 'שגיאה בייבוא' });
+        } finally {
+            setImporting(false);
+        }
+    };
+
     if (loading) return <div className="text-center">טוען...</div>;
 
     const filteredEvents = events.filter(ev => {
@@ -239,7 +394,7 @@ export default function Events() {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h2 className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">אירועים</h2>
-                <div className="flex items-center gap-4 w-full md:w-auto">
+                <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
                     <div className="relative flex-1 md:w-64">
                         <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
@@ -250,6 +405,58 @@ export default function Events() {
                             className="w-full bg-slate-800 border border-slate-700 rounded-xl pr-10 pl-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500 transition"
                         />
                     </div>
+
+                    {/* Data Menu Button */}
+                    <div className="relative" ref={dataMenuRef}>
+                        <button
+                            onClick={() => setShowDataMenu(!showDataMenu)}
+                            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2.5 rounded-xl transition font-medium text-sm"
+                        >
+                            <FiDownload size={16} />
+                            נתונים
+                            <FiChevronDown size={14} />
+                        </button>
+                        {showDataMenu && (
+                            <div className="absolute left-0 md:right-0 md:left-auto top-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 w-64 overflow-hidden">
+                                <div className="p-2">
+                                    <p className="text-xs text-slate-500 px-3 py-1 font-medium">ייצוא לאקסל</p>
+                                    <button onClick={() => handleExportExcel('events')} className="w-full text-right px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded-lg transition flex items-center gap-2">
+                                        <FiDownload size={14} /> ייצוא אירועים
+                                    </button>
+                                    <button onClick={() => handleExportExcel('suppliers')} className="w-full text-right px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded-lg transition flex items-center gap-2">
+                                        <FiDownload size={14} /> ייצוא ספקים
+                                    </button>
+                                    <button onClick={() => handleExportExcel('payments')} className="w-full text-right px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded-lg transition flex items-center gap-2">
+                                        <FiDownload size={14} /> ייצוא תשלומים
+                                    </button>
+
+                                    <hr className="border-slate-700 my-2" />
+                                    <p className="text-xs text-slate-500 px-3 py-1 font-medium">ייצוא ל-Google Sheets</p>
+                                    <button onClick={() => handleExportSheets('events')} className="w-full text-right px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded-lg transition flex items-center gap-2">
+                                        <FiUpload size={14} /> אירועים → Google Sheets
+                                    </button>
+                                    <button onClick={() => handleExportSheets('suppliers')} className="w-full text-right px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded-lg transition flex items-center gap-2">
+                                        <FiUpload size={14} /> ספקים → Google Sheets
+                                    </button>
+
+                                    <hr className="border-slate-700 my-2" />
+                                    <p className="text-xs text-slate-500 px-3 py-1 font-medium">ייבוא</p>
+                                    <label className="w-full text-right px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded-lg transition flex items-center gap-2 cursor-pointer">
+                                        <FiUpload size={14} /> ייבוא אירועים מאקסל
+                                        <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleImportExcel(e, 'events')} />
+                                    </label>
+                                    <label className="w-full text-right px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded-lg transition flex items-center gap-2 cursor-pointer">
+                                        <FiUpload size={14} /> ייבוא ספקים מאקסל
+                                        <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => handleImportExcel(e, 'suppliers')} />
+                                    </label>
+                                    <button onClick={() => { setShowDataMenu(false); setIsSheetsImportOpen(true); }} className="w-full text-right px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 rounded-lg transition flex items-center gap-2">
+                                        <FiUpload size={14} /> ייבוא מ-Google Sheets
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <button
                         onClick={() => openEventModal()}
                         className="flex shrink-0 items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl transition shadow-lg font-medium"
@@ -258,6 +465,14 @@ export default function Events() {
                     </button>
                 </div>
             </div>
+
+            {/* Import Result Banner */}
+            {importResult && (
+                <div className={`p-3 rounded-xl text-sm font-medium flex justify-between items-center ${importResult.success ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                    <span>{importResult.message}</span>
+                    <button onClick={() => setImportResult(null)} className="text-slate-400 hover:text-white">✕</button>
+                </div>
+            )}
 
             <div className="space-y-4">
                 {filteredEvents.length === 0 && (
@@ -321,7 +536,18 @@ export default function Events() {
 
                                         {isExpanded && (
                                             <div className="p-5 border-t border-slate-700 bg-slate-900/50">
-                                                <h4 className="font-bold text-slate-300 mb-4">הרכב / ספקים באירוע:</h4>
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h4 className="font-bold text-slate-300">הרכב / ספקים באירוע:</h4>
+                                                    {ev.participants && ev.participants.length > 0 && (
+                                                        <button
+                                                            onClick={() => openCalendarModal(ev._id)}
+                                                            className="flex items-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-4 py-2 rounded-lg transition text-sm font-medium border border-blue-500/20"
+                                                        >
+                                                            <FiSend size={14} />
+                                                            📅 שלח זימון בקלנדר
+                                                        </button>
+                                                    )}
+                                                </div>
                                                 {(!ev.participants || ev.participants.length === 0) ? (
                                                     <p className="text-slate-500 text-sm">טרם צורפו נגנים או ספקים לאירוע זה.</p>
                                                 ) : (
@@ -336,8 +562,8 @@ export default function Events() {
                                                                         <p className="font-bold text-slate-100">{p.supplierId?.name} <span className="text-slate-400 font-normal text-sm">({p.supplierId?.role})</span></p>
                                                                         <div className="flex gap-4 text-sm mt-1">
                                                                             <span>סיכום: <strong className="text-blue-400">{getCurrencySymbol(p.currency)}{p.expectedPay}</strong></span>
-                                                                            <span>שולם: <strong className="text-emerald-400">{getCurrencySymbol(p.currency)}{totalPaid}</strong></span>
-                                                                            <span>יתרה: <strong className={balance > 0 ? 'text-red-400' : 'text-slate-400'}>{getCurrencySymbol(p.currency)}{balance}</strong></span>
+                                                                            {/*  <span>שולם: <strong className="text-emerald-400">{getCurrencySymbol(p.currency)}{totalPaid}</strong></span>
+                                                                            <span>יתרה: <strong className={balance > 0 ? 'text-red-400' : 'text-slate-400'}>{getCurrencySymbol(p.currency)}{balance}</strong></span> */}
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-center gap-1">
@@ -522,6 +748,154 @@ export default function Events() {
                                 <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium">הוסף</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* CALENDAR INVITE MODAL */}
+            {isCalendarModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
+                        <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">📅 שליחת זימון בקלנדר</h3>
+                        {(() => {
+                            const ev = events.find(e => e._id === calendarEventId);
+                            if (!ev) return null;
+                            return (
+                                <>
+                                    <p className="text-slate-400 text-sm mb-4">
+                                        אירוע: <strong className="text-slate-200">{ev.title}</strong> | {new Date(ev.date).toLocaleDateString('he-IL')}
+                                    </p>
+                                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                                        <p className="text-sm font-medium text-slate-300 mb-2">בחר ספקים לזימון:</p>
+                                        {ev.participants.map(p => {
+                                            const fullSupplier = suppliers.find(s => s._id === (p.supplierId?._id || p.supplierId));
+                                            const hasEmail = fullSupplier?.email;
+                                            const isSelected = selectedSupplierIds.includes(p.supplierId?._id || p.supplierId);
+                                            return (
+                                                <label
+                                                    key={p._id}
+                                                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${isSelected
+                                                            ? 'bg-blue-500/10 border-blue-500/30'
+                                                            : hasEmail
+                                                                ? 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                                                                : 'bg-slate-900/50 border-slate-800 opacity-50 cursor-not-allowed'
+                                                        }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        disabled={!hasEmail}
+                                                        onChange={() => toggleSupplierSelection(p.supplierId?._id || p.supplierId)}
+                                                        className="w-4 h-4 rounded accent-blue-500"
+                                                    />
+                                                    <div className="flex-1">
+                                                        <p className="text-sm font-medium text-slate-100">
+                                                            {p.supplierId?.name} <span className="text-slate-400">({p.supplierId?.role})</span>
+                                                        </p>
+                                                        {hasEmail ? (
+                                                            <p className="text-xs text-blue-400">{fullSupplier.email}</p>
+                                                        ) : (
+                                                            <p className="text-xs text-red-400">❌ אין אימייל — הוסף אימייל בדף הספקים</p>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-sm text-slate-400">{getCurrencySymbol(p.currency)}{p.expectedPay}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {calendarResult && (
+                                        <div className={`mt-4 p-3 rounded-xl text-sm ${calendarResult.success
+                                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                            }`}>
+                                            {calendarResult.success ? (
+                                                <div>
+                                                    <p className="font-medium">✅ {calendarResult.data.message}</p>
+                                                    {calendarResult.data.calendarLink && (
+                                                        <a href={calendarResult.data.calendarLink} target="_blank" rel="noopener noreferrer" className="underline text-blue-400 text-xs mt-1 block">
+                                                            צפה באירוע בקלנדר
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p>❌ {calendarResult.message}</p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-end gap-3 mt-6">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCalendarModalOpen(false)}
+                                            className="px-4 py-2 text-slate-400"
+                                        >
+                                            סגור
+                                        </button>
+                                        <button
+                                            onClick={handleSendCalendarInvite}
+                                            disabled={calendarSending || selectedSupplierIds.length === 0}
+                                            className="flex items-center gap-2 px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-white font-medium transition"
+                                        >
+                                            {calendarSending ? (
+                                                <>⏳ שולח...</>
+                                            ) : (
+                                                <><FiSend size={16} /> שלח זימון ({selectedSupplierIds.length})</>
+                                            )}
+                                        </button>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
+
+            {/* GOOGLE SHEETS IMPORT MODAL */}
+            {isSheetsImportOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
+                        <h3 className="text-2xl font-bold mb-4">ייבוא מ-Google Sheets</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">קישור ל-Google Sheet</label>
+                                <input
+                                    type="url"
+                                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                                    value={sheetsUrl}
+                                    onChange={e => setSheetsUrl(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">סוג נתונים</label>
+                                <select
+                                    value={sheetsImportType}
+                                    onChange={e => setSheetsImportType(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100"
+                                >
+                                    <option value="events">אירועים</option>
+                                    <option value="suppliers">ספקים</option>
+                                </select>
+                            </div>
+
+                            {importResult && (
+                                <div className={`p-3 rounded-xl text-sm ${importResult.success ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                    {importResult.message}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 mt-4">
+                                <button type="button" onClick={() => setIsSheetsImportOpen(false)} className="px-4 py-2 text-slate-400">ביטול</button>
+                                <button
+                                    onClick={handleImportSheets}
+                                    disabled={!sheetsUrl || importing}
+                                    className="px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-white font-medium transition"
+                                >
+                                    {importing ? '⏳ מייבא...' : 'ייבוא'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
