@@ -10,7 +10,7 @@ export default function Suppliers() {
     // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentSupplier, setCurrentSupplier] = useState(null);
-    const [formData, setFormData] = useState({ name: '', role: '', contact_info: '', default_price: '', currency: 'Shekel' });
+    const [formData, setFormData] = useState({ name: '', role: '', contact_info: '', email: '', default_price: '', currency: 'Shekel' });
 
     useEffect(() => {
         fetchSuppliers();
@@ -56,10 +56,10 @@ export default function Suppliers() {
     const openModal = (supplier = null) => {
         if (supplier) {
             setCurrentSupplier(supplier);
-            setFormData({ name: supplier.name, role: supplier.role, contact_info: supplier.contact_info || '', default_price: supplier.default_price || '', currency: supplier.currency || 'Shekel' });
+            setFormData({ name: supplier.name, role: supplier.role, contact_info: supplier.contact_info || '', email: supplier.email || '', default_price: supplier.default_price || '', currency: supplier.currency || 'Shekel' });
         } else {
             setCurrentSupplier(null);
-            setFormData({ name: '', role: '', contact_info: '', default_price: '', currency: 'Shekel' });
+            setFormData({ name: '', role: '', contact_info: '', email: '', default_price: '', currency: 'Shekel' });
         }
         setIsModalOpen(true);
     };
@@ -105,6 +105,7 @@ export default function Suppliers() {
                             <h3 className="text-xl font-bold text-slate-100">{s.name}</h3>
                             <p className="text-purple-400 font-medium">{s.role}</p>
                             <p className="text-slate-400 text-sm mt-2">{s.contact_info || 'אין פרטי קשר'}</p>
+                            {s.email && <p className="text-blue-400 text-sm mt-1">📧 {s.email}</p>}
                             {s.default_price ? <p className="text-emerald-400 text-sm mt-1 font-medium">מחיר ברירת מחדל: {s.currency === 'Dollar' ? '$' : s.currency === 'Euro' ? '€' : '₪'}{s.default_price}</p> : null}
                         </div>
                         <div className="flex gap-2 mt-6 justify-end">
@@ -150,6 +151,16 @@ export default function Suppliers() {
                                     type="text"
                                     value={formData.contact_info}
                                     onChange={e => setFormData({ ...formData, contact_info: e.target.value })}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 transition"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">אימייל (לזימוני קלנדר)</label>
+                                <input
+                                    type="email"
+                                    placeholder="example@gmail.com"
+                                    value={formData.email}
+                                    onChange={e => setFormData({ ...formData, email: e.target.value })}
                                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-purple-500 transition"
                                 />
                             </div>
