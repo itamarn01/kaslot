@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch, FiDownload, FiUpload, FiSend } from 'react-icons/fi';
 import Select from 'react-select';
+import { EventsSkeleton } from '../components/Skeletons';
 
 const customSelectStyles = {
     control: (base, state) => ({
@@ -357,7 +358,7 @@ export default function Events() {
         }
     };
 
-    if (loading) return <div className="text-center">טוען...</div>;
+    if (loading) return <EventsSkeleton />;
 
     const filteredEvents = events.filter(ev => {
         const search = searchTerm.toLowerCase();
@@ -775,10 +776,10 @@ export default function Events() {
                                                 <label
                                                     key={p._id}
                                                     className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition ${isSelected
-                                                            ? 'bg-blue-500/10 border-blue-500/30'
-                                                            : hasEmail
-                                                                ? 'bg-slate-900 border-slate-700 hover:border-slate-600'
-                                                                : 'bg-slate-900/50 border-slate-800 opacity-50 cursor-not-allowed'
+                                                        ? 'bg-blue-500/10 border-blue-500/30'
+                                                        : hasEmail
+                                                            ? 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                                                            : 'bg-slate-900/50 border-slate-800 opacity-50 cursor-not-allowed'
                                                         }`}
                                                 >
                                                     <input
@@ -806,8 +807,8 @@ export default function Events() {
 
                                     {calendarResult && (
                                         <div className={`mt-4 p-3 rounded-xl text-sm ${calendarResult.success
-                                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                                : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                            : 'bg-red-500/10 text-red-400 border border-red-500/20'
                                             }`}>
                                             {calendarResult.success ? (
                                                 <div>

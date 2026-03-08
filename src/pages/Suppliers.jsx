@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch } from 'react-icons/fi';
+import { SuppliersSkeleton } from '../components/Skeletons';
 
 export default function Suppliers() {
     const [suppliers, setSuppliers] = useState([]);
@@ -64,7 +65,7 @@ export default function Suppliers() {
         setIsModalOpen(true);
     };
 
-    if (loading) return <div className="text-center">טוען...</div>;
+    if (loading) return <SuppliersSkeleton />;
 
     const filteredSuppliers = suppliers.filter(s => {
         const search = searchTerm.toLowerCase();
