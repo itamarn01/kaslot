@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { FiPlus, FiSearch, FiShare2, FiCreditCard, FiTrendingDown, FiUser, FiTrash2, FiChevronDown, FiChevronUp, FiPieChart } from 'react-icons/fi';
+import { PaymentsSkeleton } from '../components/Skeletons';
 
 export default function Payments() {
     const [suppliers, setSuppliers] = useState([]);
@@ -226,7 +227,7 @@ export default function Payments() {
         });
     };
 
-    if (loading) return <div className="text-center text-slate-400 py-16">טוען...</div>;
+    if (loading) return <PaymentsSkeleton />;
 
     return (
         <div className="space-y-6" dir="rtl">

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../api';
 import { FiTrendingUp, FiCreditCard, FiActivity, FiUsers } from 'react-icons/fi';
+import { DashboardSkeleton } from '../components/Skeletons';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell
@@ -93,7 +94,7 @@ export default function Dashboard() {
         return Array.from(years).sort((a, b) => b - a);
     }, [events]);
 
-    if (loading) return <div className="flex justify-center items-center h-full">טוען נתונים...</div>;
+    if (loading) return <DashboardSkeleton />;
 
     const StatCard = ({ title, value, icon, color }) => (
         <div className="bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700 hover:border-slate-600 transition duration-300">

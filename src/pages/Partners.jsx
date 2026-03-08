@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import { FiPlus, FiEdit2, FiTrash2, FiLink, FiPercent } from 'react-icons/fi';
 import Select from 'react-select';
+import { PartnersSkeleton } from '../components/Skeletons';
 
 const customSelectStyles = {
     control: (base, state) => ({
@@ -123,7 +124,7 @@ export default function Partners() {
         label: `${s.name} (${s.role})`
     }));
 
-    if (loading) return <div className="text-center">טוען...</div>;
+    if (loading) return <PartnersSkeleton />;
 
     const displayTotal = partners.reduce((sum, p) => sum + p.percentage, 0);
 
