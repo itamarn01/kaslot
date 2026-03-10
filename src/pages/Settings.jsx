@@ -122,25 +122,34 @@ export default function Settings() {
                     <FiUser className="text-blue-400" size={20} />
                     פרופיל
                 </h3>
-                <div className="flex items-center gap-4 mb-4">
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-emerald-400 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-blue-500/20">
-                        {user?.name?.charAt(0)?.toUpperCase() || '?'}
-                    </div>
-                    <div>
-                        <p className="text-slate-100 font-medium text-lg">{user?.name}</p>
-                        <p className="text-slate-400 text-sm flex items-center gap-1">
-                            <FiMail size={14} /> {user?.email}
-                        </p>
-                        <p className="text-xs mt-1 flex items-center gap-1">
-                            <FiShield size={12} className="text-blue-400" />
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${user?.authProvider === 'google'
+                <div className="flex items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-emerald-400 flex items-center justify-center text-white text-xl font-bold shadow-lg shadow-blue-500/20">
+                            {user?.name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                        <div>
+                            <p className="text-slate-100 font-medium text-lg">{user?.name}</p>
+                            <p className="text-slate-400 text-sm flex items-center gap-1">
+                                <FiMail size={14} /> {user?.email}
+                            </p>
+                            <p className="text-xs mt-1 flex items-center gap-1">
+                                <FiShield size={12} className="text-blue-400" />
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${user?.authProvider === 'google'
                                     ? 'bg-red-500/10 text-red-400'
                                     : 'bg-blue-500/10 text-blue-400'
-                                }`}>
-                                {user?.authProvider === 'google' ? '🔗 Google' : '📧 אימייל'}
-                            </span>
-                        </p>
+                                    }`}>
+                                    {user?.authProvider === 'google' ? '🔗 Google' : '📧 אימייל'}
+                                </span>
+                            </p>
+                        </div>
                     </div>
+                    <button
+                        onClick={logout}
+                        className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 px-4 py-2.5 rounded-xl border border-red-500/20 transition font-medium text-sm"
+                    >
+                        <FiLogOut size={18} />
+                        <span className="hidden sm:inline">התנתק</span>
+                    </button>
                 </div>
             </div>
 
