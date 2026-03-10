@@ -117,8 +117,9 @@ export default function Payments() {
 
         events.forEach(ev => {
             const evCurrency = ev.currency || 'Shekel';
+            // Only non-substitute suppliers reduce the shared profit pool
             const eventSupplierCosts = (ev.participants || [])
-                .filter(part => (part.currency || 'Shekel') === evCurrency)
+                .filter(part => !part.isSubstitute && (part.currency || 'Shekel') === evCurrency)
                 .reduce((sum, part) => sum + (part.expectedPay || 0), 0);
             const eventProfit = (ev.totalPrice || 0) - eventSupplierCosts;
             const partnerShare = eventProfit * (p.percentage / 100);
@@ -127,10 +128,19 @@ export default function Payments() {
                 totalExpected[evCurrency] += partnerShare;
             }
 
+            // Non-substitute linked supplier earnings
             ev.participants?.forEach(part => {
-                if (linkedIds.includes(part.supplierId?._id || part.supplierId)) {
+                if (!part.isSubstitute && linkedIds.includes(part.supplierId?._id || part.supplierId)) {
                     const cur = part.currency || 'Shekel';
                     totalExpected[cur] += part.expectedPay || 0;
+                }
+            });
+
+            // Deduct substitute costs that replace THIS partner
+            ev.participants?.forEach(part => {
+                if (part.isSubstitute && part.replacesPartnerId && (part.replacesPartnerId === p._id || part.replacesPartnerId._id === p._id)) {
+                    const cur = part.currency || 'Shekel';
+                    totalExpected[cur] -= part.expectedPay || 0;
                 }
             });
         });

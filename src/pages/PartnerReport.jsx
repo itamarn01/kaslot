@@ -130,6 +130,12 @@ export default function PartnerReport() {
                                                 <span className="text-blue-400 font-medium">{getCurrencySymbol(ev.currency)}{Math.round(ev.supplierEarnings).toLocaleString()}</span>
                                             </div>
                                         )}
+                                        {ev.substituteDeduction > 0 && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-400 text-xs">🔄 עלות מחליף:</span>
+                                                <span className="text-orange-400 font-medium">-{getCurrencySymbol(ev.currency)}{Math.round(ev.substituteDeduction).toLocaleString()}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}

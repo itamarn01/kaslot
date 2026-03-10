@@ -67,7 +67,7 @@ export default function Events() {
     const [eventForm, setEventForm] = useState({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel' });
     const [currentEventId, setCurrentEventId] = useState(null);
 
-    const [supplierForm, setSupplierForm] = useState({ supplierId: '', expectedPay: '', currency: 'Shekel' });
+    const [supplierForm, setSupplierForm] = useState({ supplierId: '', expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
     const [currentParticipantId, setCurrentParticipantId] = useState(null);
 
     // Calendar invite state
@@ -165,13 +165,19 @@ export default function Events() {
     const handleAddOrUpdateSupplierToEvent = async (e) => {
         e.preventDefault();
         try {
+            const payload = {
+                expectedPay: supplierForm.expectedPay,
+                currency: supplierForm.currency,
+                isSubstitute: supplierForm.isSubstitute,
+                replacesPartnerId: supplierForm.isSubstitute ? supplierForm.replacesPartnerId : null
+            };
             if (isEditSupplierMode) {
-                await api.put(`/events/${currentEventId}/participants/${currentParticipantId}`, { expectedPay: supplierForm.expectedPay, currency: supplierForm.currency });
+                await api.put(`/events/${currentEventId}/participants/${currentParticipantId}`, payload);
             } else {
-                await api.post(`/events/${currentEventId}/participants`, supplierForm);
+                await api.post(`/events/${currentEventId}/participants`, { ...payload, supplierId: supplierForm.supplierId });
             }
             setIsSupplierModalOpen(false);
-            setSupplierForm({ supplierId: '', expectedPay: '', currency: 'Shekel' });
+            setSupplierForm({ supplierId: '', expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
             fetchData();
         } catch (err) { alert(err.response?.data?.message || 'Error adding/updating supplier'); }
     };
@@ -210,11 +216,17 @@ export default function Events() {
         if (participant) {
             setIsEditSupplierMode(true);
             setCurrentParticipantId(participant.supplierId._id);
-            setSupplierForm({ supplierId: participant.supplierId._id, expectedPay: participant.expectedPay, currency: participant.currency || 'Shekel' });
+            setSupplierForm({
+                supplierId: participant.supplierId._id,
+                expectedPay: participant.expectedPay,
+                currency: participant.currency || 'Shekel',
+                isSubstitute: participant.isSubstitute || false,
+                replacesPartnerId: participant.replacesPartnerId || ''
+            });
         } else {
             setIsEditSupplierMode(false);
             setCurrentParticipantId(null);
-            setSupplierForm({ supplierId: '', expectedPay: '', currency: 'Shekel' });
+            setSupplierForm({ supplierId: '', expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
         }
         setIsSupplierModalOpen(true);
     };
@@ -490,6 +502,9 @@ export default function Events() {
                                 const isExpanded = expandedEventId === ev._id;
                                 const totalExpectedSuppliersPay = ev.participants ? ev.participants.reduce((sum, p) => sum + (p.expectedPay || 0), 0) : 0;
                                 const eventProfit = ev.totalPrice - totalExpectedSuppliersPay;
+                                // Calculate non-substitute costs for partner profit split
+                                const nonSubstituteCosts = ev.participants ? ev.participants.filter(p => !p.isSubstitute).reduce((sum, p) => sum + (p.expectedPay || 0), 0) : 0;
+                                const eventProfitForPartners = ev.totalPrice - nonSubstituteCosts;
 
                                 return (
                                     <div key={ev._id} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -560,11 +575,16 @@ export default function Events() {
                                                             return (
                                                                 <div key={p._id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                                                                     <div>
-                                                                        <p className="font-bold text-slate-100">{p.supplierId?.name} <span className="text-slate-400 font-normal text-sm">({p.supplierId?.role})</span></p>
+                                                                        <p className="font-bold text-slate-100">
+                                                                            {p.supplierId?.name} <span className="text-slate-400 font-normal text-sm">({p.supplierId?.role})</span>
+                                                                            {p.isSubstitute && (
+                                                                                <span className="mr-2 text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full border border-orange-500/30">
+                                                                                    🔄 מחליף{p.replacesPartnerId ? ` את ${partners.find(pt => pt._id === p.replacesPartnerId)?.name || ''}` : ''}
+                                                                                </span>
+                                                                            )}
+                                                                        </p>
                                                                         <div className="flex gap-4 text-sm mt-1">
                                                                             <span>סיכום: <strong className="text-blue-400">{getCurrencySymbol(p.currency)}{p.expectedPay}</strong></span>
-                                                                            {/*  <span>שולם: <strong className="text-emerald-400">{getCurrencySymbol(p.currency)}{totalPaid}</strong></span>
-                                                                            <span>יתרה: <strong className={balance > 0 ? 'text-red-400' : 'text-slate-400'}>{getCurrencySymbol(p.currency)}{balance}</strong></span> */}
                                                                         </div>
                                                                     </div>
                                                                     <div className="flex items-center gap-1">
@@ -595,18 +615,24 @@ export default function Events() {
                                                         <h4 className="font-bold text-violet-300 mb-3">💰 רווחי שותפים באירוע:</h4>
                                                         <div className="space-y-2">
                                                             {partners.map(partner => {
-                                                                // Calculate profit share for this event
-                                                                const profitShare = eventProfit * (partner.percentage / 100);
-                                                                // Check if partner is linked to a supplier in this event
+                                                                // Calculate profit share using non-substitute costs only
+                                                                const profitShare = eventProfitForPartners * (partner.percentage / 100);
+                                                                // Check if partner is linked to a supplier in this event (non-substitute only)
                                                                 let supplierPay = 0;
-                                                                if (partner.linkedSupplierId) {
-                                                                    const linkedId = partner.linkedSupplierId._id || partner.linkedSupplierId;
-                                                                    const linkedParticipant = (ev.participants || []).find(p => p.supplierId?._id === linkedId);
-                                                                    if (linkedParticipant) {
-                                                                        supplierPay = linkedParticipant.expectedPay || 0;
+                                                                const linkedIds = partner.linkedSupplierIds ? partner.linkedSupplierIds.map(s => s._id || s) : [];
+                                                                (ev.participants || []).forEach(p => {
+                                                                    if (!p.isSubstitute && linkedIds.includes(p.supplierId?._id)) {
+                                                                        supplierPay += p.expectedPay || 0;
                                                                     }
-                                                                }
-                                                                const totalPartnerEarning = profitShare + supplierPay;
+                                                                });
+                                                                // Calculate substitute deductions for this partner
+                                                                let substituteDeduction = 0;
+                                                                (ev.participants || []).forEach(p => {
+                                                                    if (p.isSubstitute && p.replacesPartnerId === partner._id) {
+                                                                        substituteDeduction += p.expectedPay || 0;
+                                                                    }
+                                                                });
+                                                                const totalPartnerEarning = profitShare + supplierPay - substituteDeduction;
 
                                                                 return (
                                                                     <div key={partner._id} className="bg-slate-800 p-3 rounded-xl border border-violet-500/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
@@ -619,8 +645,11 @@ export default function Events() {
                                                                             {supplierPay > 0 && (
                                                                                 <span>שכר ספק: <strong className="text-blue-400">{getCurrencySymbol(ev.currency)}{supplierPay}</strong></span>
                                                                             )}
+                                                                            {substituteDeduction > 0 && (
+                                                                                <span>עלות מחליף: <strong className="text-orange-400">-{getCurrencySymbol(ev.currency)}{substituteDeduction}</strong></span>
+                                                                            )}
                                                                             <span className="bg-violet-500/10 px-2 py-0.5 rounded-lg">
-                                                                                סה"כ: <strong className="text-emerald-400">{getCurrencySymbol(ev.currency)}{Math.round(totalPartnerEarning)}</strong>
+                                                                                סה"כ: <strong className={`${totalPartnerEarning >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{getCurrencySymbol(ev.currency)}{Math.round(totalPartnerEarning)}</strong>
                                                                             </span>
                                                                         </div>
                                                                     </div>
@@ -744,6 +773,46 @@ export default function Events() {
                                     </select>
                                 </div>
                             </div>
+
+                            {/* Substitute Supplier Toggle */}
+                            {partners.length > 0 && (
+                                <div className="mt-1 p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <div className="relative">
+                                            <input
+                                                type="checkbox"
+                                                checked={supplierForm.isSubstitute}
+                                                onChange={e => setSupplierForm({ ...supplierForm, isSubstitute: e.target.checked, replacesPartnerId: e.target.checked ? supplierForm.replacesPartnerId : '' })}
+                                                className="sr-only peer"
+                                            />
+                                            <div className="w-10 h-5 bg-slate-700 rounded-full peer peer-checked:bg-orange-500 transition-colors"></div>
+                                            <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full peer-checked:-translate-x-5 transition-transform"></div>
+                                        </div>
+                                        <div>
+                                            <span className="text-sm font-medium text-slate-200">🔄 ספק מחליף</span>
+                                            <p className="text-xs text-slate-500">העלות תנוכה רק מהשותף שהביא את המחליף</p>
+                                        </div>
+                                    </label>
+
+                                    {supplierForm.isSubstitute && (
+                                        <div className="mt-3">
+                                            <label className="block text-sm font-medium text-slate-400 mb-1">מחליף את השותף:</label>
+                                            <select
+                                                required
+                                                value={supplierForm.replacesPartnerId}
+                                                onChange={e => setSupplierForm({ ...supplierForm, replacesPartnerId: e.target.value })}
+                                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-orange-500"
+                                            >
+                                                <option value="">בחר שותף...</option>
+                                                {partners.map(p => (
+                                                    <option key={p._id} value={p._id}>{p.name} ({p.percentage}%)</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="flex justify-end gap-3 mt-6">
                                 <button type="button" onClick={() => setIsSupplierModalOpen(false)} className="px-4 py-2 text-slate-400">ביטול</button>
                                 <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium">הוסף</button>
