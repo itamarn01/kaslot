@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
-import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiTrendingUp } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiTrendingUp, FiDollarSign } from 'react-icons/fi';
 
 export default function PartnerReport() {
     const { id } = useParams();
@@ -43,7 +43,7 @@ export default function PartnerReport() {
         </div>
     );
 
-    const { partner, events, payments, totalExpected, totalPaid } = report;
+    const { partner, events, payments, totalExpected, totalPaid, budgetInfo } = report;
     const balance = {
         Shekel: totalExpected.Shekel - totalPaid.Shekel,
         Dollar: totalExpected.Dollar - totalPaid.Dollar,
@@ -94,6 +94,31 @@ export default function PartnerReport() {
                         )
                     ))}
                 </div>
+
+                {/* Budget Deduction Card */}
+                {budgetInfo?.budget && budgetInfo.monthlyBudgetDeduction > 0 && (
+                    <div className="bg-slate-800 rounded-2xl border border-amber-500/20 overflow-hidden">
+                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                            <FiDollarSign className="text-amber-400" />
+                            <h2 className="font-bold text-slate-100">ניכוי תקציב ({budgetInfo.budget.year})</h2>
+                        </div>
+                        <div className="p-4 space-y-2 text-sm">
+                            <div className="flex justify-between">
+                                <span className="text-slate-400">תקציב שנתי (חלק {partner.percentage}%)</span>
+                                <span className="text-amber-400 font-medium">₪{Math.round(budgetInfo.budget.amount * partner.percentage / 100).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-slate-400">ניכוי חודשי</span>
+                                <span className="text-orange-400 font-medium">-₪{budgetInfo.monthlyBudgetDeduction.toLocaleString('he-IL', { maximumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex justify-between border-t border-slate-700 pt-2">
+                                <span className="text-slate-300 font-semibold">ניכוי מצטבר ({budgetInfo.monthsElapsed} חודשים)</span>
+                                <span className="text-red-400 font-bold">-₪{budgetInfo.totalBudgetDeduction.toLocaleString()}</span>
+                            </div>
+                            <p className="text-xs text-slate-600 mt-1">ניכוי ב-{budgetInfo.budget.deductionDay} לכל חודש</p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Events */}
                 {events.length > 0 && (

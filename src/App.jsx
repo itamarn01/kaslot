@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { FiGrid, FiCalendar, FiUsers, FiSettings, FiCreditCard, FiPieChart, FiLogOut } from 'react-icons/fi';
+import { FiGrid, FiCalendar, FiUsers, FiSettings, FiCreditCard, FiPieChart, FiLogOut, FiDollarSign } from 'react-icons/fi';
 
 import { AuthProvider, useAuth } from './context/AuthContext';
 import SplashScreen from './components/SplashScreen';
@@ -13,6 +13,7 @@ import Payments from './pages/Payments';
 import Partners from './pages/Partners';
 import SupplierReport from './pages/SupplierReport';
 import PartnerReport from './pages/PartnerReport';
+import BudgetExpenses from './pages/BudgetExpenses';
 
 function NavLink({ to, icon, label }) {
   const location = useLocation();
@@ -64,6 +65,7 @@ function Layout({ children }) {
           <NavLink to="/payments" icon={<FiCreditCard size={22} />} label="תשלומים" />
           <NavLink to="/suppliers" icon={<FiUsers size={22} />} label="ספקים" />
           <NavLink to="/partners" icon={<FiPieChart size={22} />} label="שותפים" />
+          <NavLink to="/budget" icon={<FiDollarSign size={22} />} label="תקציב" />
           <NavLink to="/settings" icon={<FiSettings size={22} />} label="הגדרות" />
         </ul>
         {/* Logout button - desktop only */}
@@ -119,6 +121,7 @@ function AppRoutes() {
               <Route path="/payments" element={<Payments />} />
               <Route path="/suppliers" element={<Suppliers />} />
               <Route path="/partners" element={<Partners />} />
+              <Route path="/budget" element={<BudgetExpenses />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </Layout>

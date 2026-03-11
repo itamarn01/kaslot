@@ -262,6 +262,12 @@ export default function Dashboard() {
                                             <span className="text-orange-400 font-medium">-₪{Math.round(partner.substituteDeductions.Shekel).toLocaleString()}</span>
                                         </div>
                                     )}
+                                    {partner.monthlyBudgetDeduction > 0 && (
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-400" title={`₪${Math.round(partner.monthlyBudgetDeduction).toLocaleString()} לחודש`}>הפחתת תקציב</span>
+                                            <span className="text-amber-400 font-medium">-₪{Math.round(partner.budgetDeduction).toLocaleString()}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between text-sm pt-2 border-t border-slate-700">
                                         <span className="text-slate-300 font-bold">סה״כ הכנסות</span>
                                         <span className="text-emerald-400 font-bold text-lg">₪{Math.round(partner.totalEarnings.Shekel).toLocaleString()}</span>
