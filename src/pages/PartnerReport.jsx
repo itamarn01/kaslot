@@ -130,10 +130,25 @@ export default function PartnerReport() {
                                                 <span className="text-blue-400 font-medium">{getCurrencySymbol(ev.currency)}{Math.round(ev.supplierEarnings).toLocaleString()}</span>
                                             </div>
                                         )}
-                                        {ev.substituteDeduction > 0 && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-400 text-xs">🔄 עלות מחליף:</span>
-                                                <span className="text-orange-400 font-medium">-{getCurrencySymbol(ev.currency)}{Math.round(ev.substituteDeduction).toLocaleString()}</span>
+                                        {ev.substitutes && ev.substitutes.length > 0 && (
+                                            <div className="mt-2 space-y-1.5">
+                                                {ev.substitutes.map((sub, i) => (
+                                                    <div key={i} className="flex items-center justify-between bg-orange-500/5 border border-orange-500/20 rounded-lg px-3 py-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-orange-400 text-base">🔄</span>
+                                                            <div>
+                                                                <p className="text-xs font-semibold text-orange-300">הוחלפת על ידי:</p>
+                                                                <p className="text-sm text-slate-200 font-medium">
+                                                                    {sub.name}
+                                                                    {sub.role && <span className="text-slate-400 font-normal text-xs"> ({sub.role})</span>}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-orange-400 font-bold text-sm">
+                                                            -{getCurrencySymbol(sub.currency)}{sub.pay.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
                                     </div>
