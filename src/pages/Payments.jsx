@@ -8,6 +8,7 @@ export default function Payments() {
     const [partners, setPartners] = useState([]);
     const [payments, setPayments] = useState([]);
     const [events, setEvents] = useState([]);
+    const [budgetSummary, setBudgetSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedEntityId, setExpandedEntityId] = useState(null);
@@ -32,16 +33,19 @@ export default function Payments() {
 
     const fetchAll = async () => {
         try {
-            const [suppliersRes, partnersRes, paymentsRes, eventsRes] = await Promise.all([
+            const currentYear = new Date().getFullYear();
+            const [suppliersRes, partnersRes, paymentsRes, eventsRes, budgetRes] = await Promise.all([
                 api.get('/suppliers'),
                 api.get('/partners'),
                 api.get('/payments'),
                 api.get('/events'),
+                api.get(`/budget/summary?year=${currentYear}`).catch(() => ({ data: null })),
             ]);
             setSuppliers(suppliersRes.data);
             setPartners(partnersRes.data);
             setPayments(paymentsRes.data);
             setEvents(eventsRes.data);
+            setBudgetSummary(budgetRes.data);
         } catch (err) {
             console.error(err);
         } finally {
@@ -110,6 +114,14 @@ export default function Payments() {
             };
         });
 
+    // Build a map: partnerId -> budget deduction so far this year (Shekel only)
+    const budgetDeductionMap = {};
+    if (budgetSummary?.budget && budgetSummary.monthsElapsed > 0) {
+        (budgetSummary.partnerDeductions || []).forEach(pd => {
+            budgetDeductionMap[pd._id] = pd.monthlyDeduction * budgetSummary.monthsElapsed;
+        });
+    }
+
     // Build per-partner balance
     const partnerBalances = partners.map(p => {
         const totalExpected = { Shekel: 0, Dollar: 0, Euro: 0 };
@@ -145,6 +157,10 @@ export default function Payments() {
             });
         });
 
+        // Subtract accumulated budget deduction for this year (Shekel)
+        const budgetDeduction = budgetDeductionMap[p._id] || 0;
+        totalExpected.Shekel -= budgetDeduction;
+
         const totalPaid = { Shekel: 0, Dollar: 0, Euro: 0 };
         const entityPayments = payments.filter(pay =>
             pay.partnerId?._id === p._id || pay.partnerId === p._id ||
@@ -173,7 +189,8 @@ export default function Payments() {
             balance,
             entityPayments,
             hasDebt,
-            hasCredit
+            hasCredit,
+            budgetDeduction: budgetDeductionMap[p._id] || 0,
         };
     });
 
@@ -261,7 +278,7 @@ export default function Payments() {
                 {filteredBalances.length === 0 && (
                     <p className="text-center text-slate-500 py-16">לא נמצאו שותפים או ספקים.</p>
                 )}
-                {filteredBalances.map(({ entity, type, id, totalExpected, totalPaid, balance, entityPayments, hasDebt }) => {
+                {filteredBalances.map(({ entity, type, id, totalExpected, totalPaid, balance, entityPayments, hasDebt, budgetDeduction }) => {
                     const isExpanded = expandedEntityId === id;
                     const currencies = ['Shekel', 'Dollar', 'Euro'].filter(c => totalExpected[c] > 0 || totalPaid[c] > 0);
 
@@ -325,6 +342,12 @@ export default function Payments() {
                                                 <div key={cur} className="text-sm space-y-1">
                                                     <p className="text-xs text-slate-600 font-medium">{cur === 'Shekel' ? '₪ שקל' : cur === 'Dollar' ? '$ דולר' : '€ יורו'}</p>
                                                     <div className="flex justify-between"><span className="text-slate-400">לתשלום</span><span className="text-blue-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalExpected[cur]).toLocaleString()}</span></div>
+                                                    {type === 'partner' && cur === 'Shekel' && budgetDeduction > 0 && (
+                                                        <div className="flex justify-between">
+                                                            <span className="text-slate-400 text-xs">הפחתת תקציב</span>
+                                                            <span className="text-amber-400 font-semibold">-₪{Math.round(budgetDeduction).toLocaleString()}</span>
+                                                        </div>
+                                                    )}
                                                     <div className="flex justify-between"><span className="text-slate-400">שולם</span><span className="text-emerald-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalPaid[cur]).toLocaleString()}</span></div>
                                                     <div className="flex justify-between border-t border-slate-700 pt-1"><span className="text-slate-400">יתרה</span><span className={`font-bold ${balance[cur] > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{getCurrencySymbol(cur)}{Math.round(Math.abs(balance[cur])).toLocaleString()}</span></div>
                                                 </div>
