@@ -64,10 +64,10 @@ export default function Events() {
     const [isEditEventMode, setIsEditEventMode] = useState(false);
     const [isEditSupplierMode, setIsEditSupplierMode] = useState(false);
 
-    const [eventForm, setEventForm] = useState({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel' });
+    const [eventForm, setEventForm] = useState({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel', eventType: 'חתונה' });
     const [currentEventId, setCurrentEventId] = useState(null);
 
-    const [supplierForm, setSupplierForm] = useState({ supplierId: '', expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
+    const [supplierForm, setSupplierForm] = useState({ supplierIds: [], expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
     const [currentParticipantId, setCurrentParticipantId] = useState(null);
 
     // Calendar invite state
@@ -148,7 +148,7 @@ export default function Events() {
                 await api.post('/events', eventForm);
             }
             setIsEventModalOpen(false);
-            setEventForm({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel' });
+            setEventForm({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel', eventType: 'חתונה' });
             fetchData();
         } catch (err) { console.error(err); }
     };
@@ -165,19 +165,32 @@ export default function Events() {
     const handleAddOrUpdateSupplierToEvent = async (e) => {
         e.preventDefault();
         try {
-            const payload = {
-                expectedPay: supplierForm.expectedPay,
-                currency: supplierForm.currency,
-                isSubstitute: supplierForm.isSubstitute,
-                replacesPartnerId: supplierForm.isSubstitute ? supplierForm.replacesPartnerId : null
-            };
             if (isEditSupplierMode) {
+                // Edit mode: single supplier, use supplierId directly
+                const payload = {
+                    expectedPay: supplierForm.expectedPay,
+                    currency: supplierForm.currency,
+                    isSubstitute: supplierForm.isSubstitute,
+                    replacesPartnerId: supplierForm.isSubstitute ? supplierForm.replacesPartnerId : null
+                };
                 await api.put(`/events/${currentEventId}/participants/${currentParticipantId}`, payload);
             } else {
-                await api.post(`/events/${currentEventId}/participants`, { ...payload, supplierId: supplierForm.supplierId });
+                // Add mode: loop over selected supplierIds
+                const ids = supplierForm.supplierIds || [];
+                if (ids.length === 0) { alert('בחר לפחות ספק אחד'); return; }
+                await Promise.all(ids.map(sid => {
+                    const s = suppliers.find(x => x._id === sid);
+                    return api.post(`/events/${currentEventId}/participants`, {
+                        supplierId: sid,
+                        expectedPay: supplierForm.expectedPay || (s?.default_price ?? 0),
+                        currency: supplierForm.currency || (s?.currency || 'Shekel'),
+                        isSubstitute: supplierForm.isSubstitute,
+                        replacesPartnerId: supplierForm.isSubstitute ? supplierForm.replacesPartnerId : null
+                    });
+                }));
             }
             setIsSupplierModalOpen(false);
-            setSupplierForm({ supplierId: '', expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
+            setSupplierForm({ supplierIds: [], expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
             fetchData();
         } catch (err) { alert(err.response?.data?.message || 'Error adding/updating supplier'); }
     };
@@ -201,12 +214,13 @@ export default function Events() {
                 location: ev.location || '',
                 phone_number: ev.phone_number || '',
                 totalPrice: ev.totalPrice,
-                currency: ev.currency || 'Shekel'
+                currency: ev.currency || 'Shekel',
+                eventType: ev.eventType || 'חתונה'
             });
         } else {
             setIsEditEventMode(false);
             setCurrentEventId(null);
-            setEventForm({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel' });
+            setEventForm({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel', eventType: 'חתונה' });
         }
         setIsEventModalOpen(true);
     };
@@ -217,7 +231,7 @@ export default function Events() {
             setIsEditSupplierMode(true);
             setCurrentParticipantId(participant.supplierId._id);
             setSupplierForm({
-                supplierId: participant.supplierId._id,
+                supplierIds: [participant.supplierId._id],
                 expectedPay: participant.expectedPay,
                 currency: participant.currency || 'Shekel',
                 isSubstitute: participant.isSubstitute || false,
@@ -226,7 +240,7 @@ export default function Events() {
         } else {
             setIsEditSupplierMode(false);
             setCurrentParticipantId(null);
-            setSupplierForm({ supplierId: '', expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
+            setSupplierForm({ supplierIds: [], expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
         }
         setIsSupplierModalOpen(true);
     };
@@ -674,9 +688,23 @@ export default function Events() {
                     <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
                         <h3 className="text-2xl font-bold mb-4">{isEditEventMode ? 'ערוך אירוע' : 'אירוע חדש'}</h3>
                         <form onSubmit={handleCreateOrUpdateEvent} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1">שם האירוע</label>
-                                <input required type="text" value={eventForm.title} onChange={e => setEventForm({ ...eventForm, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">שם האירוע</label>
+                                    <input required type="text" value={eventForm.title} onChange={e => setEventForm({ ...eventForm, title: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">סוג אירוע</label>
+                                    <select value={eventForm.eventType} onChange={e => setEventForm({ ...eventForm, eventType: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500">
+                                        <option value="חתונה">חתונה</option>
+                                        <option value="בר/בת מצווה">בר/בת מצווה</option>
+                                        <option value="צוות 1">צוות 1</option>
+                                        <option value="צוות 2">צוות 2</option>
+                                        <option value="אירוע עירייה">אירוע עירייה</option>
+                                        <option value="מופע">מופע</option>
+                                        <option value="אחר">אחר</option>
+                                    </select>
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1">תאריך</label>
@@ -721,29 +749,32 @@ export default function Events() {
                         <form onSubmit={handleAddOrUpdateSupplierToEvent} className="space-y-4">
                             {!isEditSupplierMode && (
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-1">בחר ספק</label>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">בחר נגנים/ספקים</label>
                                     <Select
+                                        isMulti
                                         options={supplierOptions}
-                                        placeholder="חיפוש נגן לפי שם או תפקיד..."
+                                        placeholder="חיפוש לפי שם או תפקיד..."
                                         styles={customSelectStyles}
-                                        value={supplierOptions.find(opt => opt.value === supplierForm.supplierId) || null}
-                                        onChange={(selectedOption) => {
-                                            if (selectedOption) {
-                                                const s = selectedOption.supplier;
+                                        value={supplierOptions.filter(opt => (supplierForm.supplierIds || []).includes(opt.value))}
+                                        onChange={(selected) => {
+                                            const ids = selected ? selected.map(s => s.value) : [];
+                                            // If single selection, auto-fill default pay
+                                            if (ids.length === 1) {
+                                                const s = suppliers.find(x => x._id === ids[0]);
                                                 setSupplierForm(prev => ({
                                                     ...prev,
-                                                    supplierId: s._id,
-                                                    expectedPay: s.default_price ? s.default_price : prev.expectedPay,
-                                                    currency: s.default_price ? (s.currency || 'Shekel') : prev.currency
+                                                    supplierIds: ids,
+                                                    expectedPay: s?.default_price ?? prev.expectedPay,
+                                                    currency: s?.currency || prev.currency
                                                 }));
                                             } else {
-                                                setSupplierForm(prev => ({ ...prev, supplierId: '' }));
+                                                setSupplierForm(prev => ({ ...prev, supplierIds: ids }));
                                             }
                                         }}
-                                        noOptionsMessage={() => "לא נמצאו תוצאות נוספות. (האם הנגן כבר מקושר לאירוע?)"}
+                                        noOptionsMessage={() => "לא נמצאו תוצאות. (האם הנגן כבר מקושר לאירוע?)"}
                                         isClearable
-                                        required
                                     />
+                                    <p className="text-xs text-slate-500 mt-1">אפשר לבחור מספר נגנים בו זמנית. בבחירה מרובית, השכר המוסכם יחול על כולם.</p>
 
                                     {currentEvent?.participants?.length > 0 && (
                                         <div className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
