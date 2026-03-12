@@ -157,9 +157,11 @@ export default function Payments() {
             });
         });
 
-        // Subtract accumulated budget deduction for this year (Shekel)
+        // Event earnings BEFORE budget deduction
+        const eventEarnings = { ...totalExpected };
+
+        // Subtract accumulated budget deduction for this year (Shekel) from BALANCE only
         const budgetDeduction = budgetDeductionMap[p._id] || 0;
-        totalExpected.Shekel -= budgetDeduction;
 
         const totalPaid = { Shekel: 0, Dollar: 0, Euro: 0 };
         const entityPayments = payments.filter(pay =>
@@ -172,9 +174,9 @@ export default function Payments() {
         });
 
         const balance = {
-            Shekel: totalExpected.Shekel - totalPaid.Shekel,
-            Dollar: totalExpected.Dollar - totalPaid.Dollar,
-            Euro: totalExpected.Euro - totalPaid.Euro,
+            Shekel: eventEarnings.Shekel - budgetDeduction - totalPaid.Shekel,
+            Dollar: eventEarnings.Dollar - totalPaid.Dollar,
+            Euro: eventEarnings.Euro - totalPaid.Euro,
         };
 
         const hasDebt = Object.values(balance).some(v => v > 0);
@@ -184,7 +186,7 @@ export default function Payments() {
             entity: { ...p, displayRole: `שותף (${p.percentage}%)` },
             type: 'partner',
             id: p._id,
-            totalExpected,
+            totalExpected: eventEarnings, // Replaces with raw profit
             totalPaid,
             balance,
             entityPayments,
@@ -341,15 +343,15 @@ export default function Payments() {
                                             {currencies.map(cur => (
                                                 <div key={cur} className="text-sm space-y-1">
                                                     <p className="text-xs text-slate-600 font-medium">{cur === 'Shekel' ? '₪ שקל' : cur === 'Dollar' ? '$ דולר' : '€ יורו'}</p>
-                                                    <div className="flex justify-between"><span className="text-slate-400">לתשלום</span><span className="text-blue-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalExpected[cur]).toLocaleString()}</span></div>
+                                                    <div className="flex justify-between"><span className="text-slate-400">רווח מאירועים</span><span className="text-blue-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalExpected[cur]).toLocaleString()}</span></div>
                                                     {type === 'partner' && cur === 'Shekel' && budgetDeduction > 0 && (
                                                         <div className="flex justify-between">
                                                             <span className="text-slate-400 text-xs">הפחתת תקציב</span>
-                                                            <span className="text-amber-400 font-semibold">-₪{Math.round(budgetDeduction).toLocaleString()}</span>
+                                                            <span className="text-orange-400 font-semibold">-₪{Math.round(budgetDeduction).toLocaleString()}</span>
                                                         </div>
                                                     )}
                                                     <div className="flex justify-between"><span className="text-slate-400">שולם</span><span className="text-emerald-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalPaid[cur]).toLocaleString()}</span></div>
-                                                    <div className="flex justify-between border-t border-slate-700 pt-1"><span className="text-slate-400">יתרה</span><span className={`font-bold ${balance[cur] > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{getCurrencySymbol(cur)}{Math.round(Math.abs(balance[cur])).toLocaleString()}</span></div>
+                                                    <div className="flex justify-between border-t border-slate-700 pt-1"><span className="text-slate-400 font-bold">יתרה לתשלום</span><span className={`font-bold ${balance[cur] > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{getCurrencySymbol(cur)}{Math.round(Math.abs(balance[cur])).toLocaleString()}</span></div>
                                                 </div>
                                             ))}
                                         </div>
