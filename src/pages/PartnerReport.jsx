@@ -44,8 +44,9 @@ export default function PartnerReport() {
     );
 
     const { partner, events, payments, totalExpected, totalPaid, budgetInfo } = report;
+    const totalBudgetDeduction = (budgetInfo?.totalBudgetDeduction || 0);
     const balance = {
-        Shekel: totalExpected.Shekel - totalPaid.Shekel,
+        Shekel: totalExpected.Shekel - totalBudgetDeduction - totalPaid.Shekel,
         Dollar: totalExpected.Dollar - totalPaid.Dollar,
         Euro: totalExpected.Euro - totalPaid.Euro,
     };
@@ -76,15 +77,21 @@ export default function PartnerReport() {
                                 <p className="text-xs text-slate-500 mb-3 font-medium">{cur === 'Shekel' ? 'שקל ₪' : cur === 'Dollar' ? 'דולר $' : 'יורו €'}</p>
                                 <div className="space-y-1.5 text-sm">
                                     <div className="flex justify-between">
-                                        <span className="text-slate-400">סה"כ מגיע</span>
+                                        <span className="text-slate-400">רווח מאירועים</span>
                                         <span className="text-blue-400 font-bold">{getCurrencySymbol(cur)}{Math.round(totalExpected[cur]).toLocaleString()}</span>
                                     </div>
+                                    {cur === 'Shekel' && totalBudgetDeduction > 0 && (
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400 text-xs text-orange-400/80">הפחתת תקציב</span>
+                                            <span className="text-orange-400 font-bold">-₪{Math.round(totalBudgetDeduction).toLocaleString()}</span>
+                                        </div>
+                                    )}
                                     <div className="flex justify-between">
                                         <span className="text-slate-400">שולם</span>
                                         <span className="text-emerald-400 font-bold">{getCurrencySymbol(cur)}{Math.round(totalPaid[cur]).toLocaleString()}</span>
                                     </div>
                                     <div className="border-t border-slate-700 pt-1.5 flex justify-between">
-                                        <span className="text-slate-400">יתרה</span>
+                                        <span className="text-slate-300 font-bold">יתרה לתשלום</span>
                                         <span className={`font-bold ${balance[cur] > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                                             {getCurrencySymbol(cur)}{Math.round(balance[cur]).toLocaleString()}
                                         </span>

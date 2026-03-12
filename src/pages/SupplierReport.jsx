@@ -80,7 +80,7 @@ export default function SupplierReport() {
                                         <span className="text-emerald-400 font-bold">{getCurrencySymbol(cur)}{totalPaid[cur].toLocaleString()}</span>
                                     </div>
                                     <div className="border-t border-slate-700 pt-1.5 flex justify-between">
-                                        <span className="text-slate-400">יתרה</span>
+                                        <span className="text-slate-300 font-bold">יתרה לתשלום</span>
                                         <span className={`font-bold ${balance[cur] > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                                             {getCurrencySymbol(cur)}{balance[cur].toLocaleString()}
                                         </span>
