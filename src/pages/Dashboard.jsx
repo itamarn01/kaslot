@@ -11,16 +11,19 @@ export default function Dashboard() {
     const [summary, setSummary] = useState(null);
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [clientSummary, setClientSummary] = useState(null);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
 
     const fetchData = async () => {
         try {
-            const [summaryRes, eventsRes] = await Promise.all([
+            const [summaryRes, eventsRes, clientRes] = await Promise.all([
                 api.get('/dashboard/summary'),
-                api.get('/events')
+                api.get('/events'),
+                api.get('/client-payments/summary').catch(() => ({ data: null }))
             ]);
             setSummary(summaryRes.data);
             setEvents(eventsRes.data);
+            setClientSummary(clientRes.data);
         } catch (err) {
             console.error(err);
         } finally {
@@ -275,6 +278,31 @@ export default function Dashboard() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Client Payments Overview */}
+            {clientSummary && clientSummary.events?.length > 0 && (
+                <div className="mt-8 border-t border-slate-700/50 pt-8">
+                    <h3 className="text-2xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                        <FiCreditCard className="text-emerald-400" /> מזומן ותקבולי לקוחות
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                            <p className="text-sm text-slate-400 mb-1">סה״כ צפי הכנסות (אירועים)</p>
+                            <p className="text-3xl font-bold text-blue-400">₪{Math.round(clientSummary.totalExpected).toLocaleString()}</p>
+                        </div>
+                        <div className="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                            <p className="text-sm text-slate-400 mb-1">סה״כ התקבל</p>
+                            <p className="text-3xl font-bold text-emerald-400">₪{Math.round(clientSummary.totalReceived).toLocaleString()}</p>
+                        </div>
+                        <div className={`rounded-2xl p-5 border ${clientSummary.totalOutstanding > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+                            <p className="text-sm text-slate-400 mb-1">יתרה לגבייה חוב לקוחות</p>
+                            <p className={`text-3xl font-bold ${clientSummary.totalOutstanding > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                ₪{Math.round(clientSummary.totalOutstanding).toLocaleString()}
+                            </p>
+                        </div>
                     </div>
                 </div>
             )}
