@@ -18,9 +18,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && window.location.pathname !== '/auth') {
-      // Don't redirect if already on auth page or if it's an auth request
+      // Don't redirect if already on auth page, if it's an auth request, or if it's a public report page
       const isAuthRequest = error.config?.url?.includes('/auth/');
-      if (!isAuthRequest) {
+      const isPublicReportPage = window.location.pathname.includes('/supplier-report/') || 
+                               window.location.pathname.includes('/partner-report/');
+                               
+      if (!isAuthRequest && !isPublicReportPage) {
         localStorage.removeItem('kaslot_token');
         window.location.href = '/auth';
       }
