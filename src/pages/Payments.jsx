@@ -16,7 +16,7 @@ export default function Payments() {
     // Payment modal (suppliers/partners)
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [selectedEntity, setSelectedEntity] = useState(null);
-    const [paymentForm, setPaymentForm] = useState({ amount: '', currency: 'Shekel', method: 'Cash', note: '', type: 'general' });
+    const [paymentForm, setPaymentForm] = useState({ amount: '', currency: 'Shekel', method: 'Cash', note: '', type: 'general', date: new Date().toISOString().split('T')[0] });
 
     // Active sub-tab
     const [activeTab, setActiveTab] = useState('suppliers');
@@ -174,7 +174,7 @@ export default function Payments() {
 
     const openPaymentModal = (entityData) => {
         setSelectedEntity({ id: entityData.id, name: entityData.entity.name, role: entityData.entity.displayRole, type: entityData.type });
-        setPaymentForm({ amount: '', currency: 'Shekel', method: 'Cash', note: '', type: 'general' });
+        setPaymentForm({ amount: '', currency: 'Shekel', method: 'Cash', note: '', type: 'general', date: new Date().toISOString().split('T')[0] });
         setIsPaymentModalOpen(true);
     };
 
@@ -185,6 +185,7 @@ export default function Payments() {
                 amount: parseFloat(paymentForm.amount),
                 currency: paymentForm.currency,
                 method: paymentForm.type === 'loan' ? 'Loan' : paymentForm.method,
+                date: paymentForm.date,
                 note: paymentForm.note || (paymentForm.type === 'loan' ? 'הלוואה' : ''),
             };
             if (selectedEntity.type === 'partner') payload.partnerId = selectedEntity.id;
@@ -609,15 +610,28 @@ export default function Payments() {
                             </div>
 
                             {paymentForm.type === 'general' && (
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-400 mb-1">אמצעי תשלום</label>
+                                        <select value={paymentForm.method} onChange={e => setPaymentForm({ ...paymentForm, method: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100">
+                                            <option value="Cash">מזומן</option>
+                                            <option value="Bit">ביט</option>
+                                            <option value="Paybox">פייבוקס</option>
+                                            <option value="Bank Transfer">העברה בנקאית</option>
+                                            <option value="Check">צ'ק</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-400 mb-1">תאריך</label>
+                                        <input required type="date" value={paymentForm.date} onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {paymentForm.type === 'loan' && (
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-400 mb-1">אמצעי תשלום</label>
-                                    <select value={paymentForm.method} onChange={e => setPaymentForm({ ...paymentForm, method: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100">
-                                        <option value="Cash">מזומן</option>
-                                        <option value="Bit">ביט</option>
-                                        <option value="Paybox">פייבוקס</option>
-                                        <option value="Bank Transfer">העברה בנקאית</option>
-                                        <option value="Check">צ'ק</option>
-                                    </select>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">תאריך</label>
+                                    <input required type="date" value={paymentForm.date} onChange={e => setPaymentForm({ ...paymentForm, date: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500" />
                                 </div>
                             )}
 
