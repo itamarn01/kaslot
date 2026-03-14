@@ -81,7 +81,16 @@ export default function Dashboard() {
             }
         });
 
-        const expensesData = Object.values(expensesBySupplier).sort((a, b) => b.value - a.value);
+        const sortedExpenses = Object.values(expensesBySupplier).sort((a, b) => b.value - a.value);
+        let expensesData = sortedExpenses;
+
+        if (sortedExpenses.length > 7) {
+            const top6 = sortedExpenses.slice(0, 6);
+            const othersValue = sortedExpenses.slice(6).reduce((sum, curr) => sum + curr.value, 0);
+            if (othersValue > 0) {
+                expensesData = [...top6, { name: 'אחרים / נוספים', value: othersValue }];
+            }
+        }
 
         return {
             monthly: monthlyStats,
@@ -216,10 +225,11 @@ export default function Dashboard() {
                                         formatter={(value) => [`₪${value}`, '']}
                                     />
                                     <Legend
-                                        layout="vertical"
+                                        layout="horizontal"
                                         verticalAlign="bottom"
                                         align="center"
-                                        wrapperStyle={{ fontSize: '12px', marginTop: '10px' }}
+                                        iconSize={10}
+                                        wrapperStyle={{ fontSize: '11px', paddingTop: '15px' }}
                                     />
                                 </PieChart>
                             </ResponsiveContainer>
