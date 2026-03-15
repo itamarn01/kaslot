@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
-import { FiCalendar, FiMapPin, FiUser, FiCreditCard, FiTrendingUp, FiLink } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiUser, FiCreditCard, FiTrendingUp, FiLink, FiPhone } from 'react-icons/fi';
 
 export default function SupplierReport() {
     const { id } = useParams();
@@ -65,7 +65,7 @@ export default function SupplierReport() {
                 </div>
 
                 {/* Balance Summary */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {['Shekel', 'Dollar', 'Euro'].map(cur => (
                         (totalExpected[cur] > 0 || totalPaid[cur] > 0 || (totalDebt[cur] || 0) > 0 || (cur === 'Shekel' && (totalBandExpenses.Shekel || 0) > 0)) && (
                             <div key={cur} className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
@@ -103,29 +103,71 @@ export default function SupplierReport() {
                     ))}
                 </div>
 
-                {/* Events */}
-                {events.length > 0 && (
-                    <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
-                            <FiCalendar className="text-emerald-400" />
-                            <h2 className="font-bold text-slate-100">אירועים ({events.length})</h2>
-                        </div>
-                        <div className="divide-y divide-slate-700">
-                            {events.map(ev => (
-                                <div key={ev._id} className="p-4 flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium text-slate-100">{ev.title}</p>
-                                        <div className="flex gap-3 text-xs text-slate-500 mt-1">
-                                            <span className="flex items-center gap-1"><FiCalendar size={11} />{new Date(ev.date).toLocaleDateString('he-IL')}</span>
-                                            {ev.location && <span className="flex items-center gap-1"><FiMapPin size={11} />{ev.location}</span>}
+                {/* Events Grouped by Month */}
+                {Object.keys(events.reduce((acc, ev) => {
+                    const month = new Date(ev.date).toLocaleString('he-IL', { month: 'long', year: 'numeric' });
+                    if (!acc[month]) acc[month] = [];
+                    acc[month].push(ev);
+                    return acc;
+                }, {})).map(month => {
+                    const monthEvents = events.filter(ev => new Date(ev.date).toLocaleString('he-IL', { month: 'long', year: 'numeric' }) === month);
+                    const monthProfit = monthEvents.reduce((acc, ev) => {
+                        const cur = ev.currency || 'Shekel';
+                        if (!acc[cur]) acc[cur] = 0;
+                        acc[cur] += ev.expectedPay;
+                        return acc;
+                    }, {});
+
+                    return (
+                        <div key={month} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+                            <div className="p-4 border-b border-slate-700 flex items-center justify-between bg-slate-800/50">
+                                <div className="flex items-center gap-2">
+                                    <FiCalendar className="text-emerald-400" />
+                                    <h2 className="font-bold text-slate-100">{month}</h2>
+                                </div>
+                                <div className="text-left">
+                                    {Object.entries(monthProfit).map(([cur, amount]) => (
+                                        <div key={cur} className="text-emerald-400 font-bold text-sm">
+                                            {getCurrencySymbol(cur)}{Math.round(amount).toLocaleString()}
+                                        </div>
+                                    ))}
+                                    <div className="text-[10px] text-slate-500">סיכום חודשי</div>
+                                </div>
+                            </div>
+                            <div className="divide-y divide-slate-700/50">
+                                {monthEvents.map(ev => (
+                                    <div key={ev._id} className="p-4 hover:bg-slate-700/30 transition-colors">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <p className="font-bold text-slate-100">{ev.title}</p>
+                                                    {ev.eventType && (
+                                                        <span className="bg-blue-500/10 text-blue-400 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/20">
+                                                            {ev.eventType}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mt-2">
+                                                    <span className="flex items-center gap-1"><FiCalendar size={12} className="text-slate-600" />{new Date(ev.date).toLocaleDateString('he-IL')}</span>
+                                                    {ev.location && <span className="flex items-center gap-1"><FiMapPin size={12} className="text-slate-600" />{ev.location}</span>}
+                                                    {ev.phone_number && (
+                                                        <a href={`tel:${ev.phone_number}`} className="flex items-center gap-1 text-blue-400 hover:underline">
+                                                            <FiPhone size={12} className="text-blue-500" /> {ev.phone_number}
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="text-left mr-4">
+                                                <div className="text-lg font-bold text-blue-400 whitespace-nowrap">{getCurrencySymbol(ev.currency)}{Math.round(ev.expectedPay).toLocaleString()}</div>
+                                                <div className="text-[10px] text-slate-500">שכר לאירוע</div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <span className="text-blue-400 font-bold">{getCurrencySymbol(ev.currency)}{ev.expectedPay.toLocaleString()}</span>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })}
 
                 {/* Linked Band Expenses */}
                 {linkedBandExpenses.length > 0 && (

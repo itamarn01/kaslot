@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
-import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiTrendingUp, FiDollarSign, FiLink } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiTrendingUp, FiDollarSign, FiLink, FiPhone } from 'react-icons/fi';
 
 export default function PartnerReport() {
     const { id } = useParams();
@@ -64,13 +64,20 @@ export default function PartnerReport() {
                         שותף ({partner.percentage}%)
                     </span>
                     {partner.linkedSupplierIds && partner.linkedSupplierIds.length > 0 && (
-                        <p className="text-slate-500 text-sm mt-3">מקושר לספקים: {partner.linkedSupplierIds.map(s => s.name).join(', ')}</p>
+                        <div className="flex flex-wrap justify-center gap-2 mt-4">
+                            <span className="text-slate-500 text-xs w-full mb-1">מקושר לספקים:</span>
+                            {partner.linkedSupplierIds.map(s => (
+                                <span key={s._id} className="bg-slate-700 text-slate-300 px-2 py-1 rounded text-[10px] border border-slate-600">
+                                    {s.name}
+                                </span>
+                            ))}
+                        </div>
                     )}
                     <p className="text-xs text-slate-600 mt-3">דוח יוצר ע"י Kaslot • {new Date().toLocaleDateString('he-IL')}</p>
                 </div>
 
                 {/* Balance Summary */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {['Shekel', 'Dollar', 'Euro'].map(cur => (
                         (totalExpected[cur] > 0 || totalPaid[cur] > 0 || (totalDebt[cur] || 0) > 0 || (cur === 'Shekel' && ((totalBandExpenses.Shekel || 0) > 0))) && (
                             <div key={cur} className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
@@ -139,68 +146,107 @@ export default function PartnerReport() {
                     </div>
                 )}
 
-                {/* Events */}
-                {events.length > 0 && (
-                    <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
-                            <FiCalendar className="text-emerald-400" />
-                            <h2 className="font-bold text-slate-100">אירועים ({events.length})</h2>
-                        </div>
-                        <div className="divide-y divide-slate-700">
-                            {events.map(ev => (
-                                <div key={ev._id} className="p-4">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div>
-                                            <p className="font-medium text-slate-100">{ev.title}</p>
-                                            <div className="flex gap-3 text-xs text-slate-500 mt-1">
-                                                <span className="flex items-center gap-1"><FiCalendar size={11} />{new Date(ev.date).toLocaleDateString('he-IL')}</span>
-                                                {ev.location && <span className="flex items-center gap-1"><FiMapPin size={11} />{ev.location}</span>}
-                                            </div>
-                                        </div>
-                                        <div className="text-left">
-                                            <div className="text-lg font-bold text-emerald-400">{getCurrencySymbol(ev.currency)}{Math.round(ev.expectedPay).toLocaleString()}</div>
-                                            <div className="text-[10px] text-slate-500">סה״כ לאירוע זה</div>
-                                        </div>
-                                    </div>
+                {/* Events Grouped by Month */}
+                {Object.keys(events.reduce((acc, ev) => {
+                    const month = new Date(ev.date).toLocaleString('he-IL', { month: 'long', year: 'numeric' });
+                    if (!acc[month]) acc[month] = [];
+                    acc[month].push(ev);
+                    return acc;
+                }, {})).map(month => {
+                    const monthEvents = events.filter(ev => new Date(ev.date).toLocaleString('he-IL', { month: 'long', year: 'numeric' }) === month);
+                    const monthProfit = monthEvents.reduce((acc, ev) => {
+                        const cur = ev.currency || 'Shekel';
+                        if (!acc[cur]) acc[cur] = 0;
+                        acc[cur] += ev.expectedPay;
+                        return acc;
+                    }, {});
 
-                                    <div className="bg-slate-900/50 rounded-lg p-2 mt-2 space-y-1 text-sm border border-slate-700/50">
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-400 text-xs">רווח כשותף:</span>
-                                            <span className="text-violet-400 font-medium">{getCurrencySymbol(ev.currency)}{Math.round(ev.partnerShare).toLocaleString()}</span>
-                                        </div>
-                                        {ev.supplierEarnings > 0 && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-400 text-xs">שכר כספק:</span>
-                                                <span className="text-blue-400 font-medium">{getCurrencySymbol(ev.currency)}{Math.round(ev.supplierEarnings).toLocaleString()}</span>
-                                            </div>
-                                        )}
-                                        {ev.substitutes && ev.substitutes.length > 0 && (
-                                            <div className="mt-2 space-y-1.5">
-                                                {ev.substitutes.map((sub, i) => (
-                                                    <div key={i} className="flex items-center justify-between bg-orange-500/5 border border-orange-500/20 rounded-lg px-3 py-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-orange-400 text-base">🔄</span>
-                                                            <div>
-                                                                <p className="text-xs font-semibold text-orange-300">הוחלפת על ידי:</p>
-                                                                <p className="text-sm text-slate-200 font-medium">
-                                                                    {sub.name}
-                                                                    {sub.role && <span className="text-slate-400 font-normal text-xs"> ({sub.role})</span>}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <span className="text-orange-400 font-bold text-sm">
-                                                            -{getCurrencySymbol(sub.currency)}{sub.pay.toLocaleString()}
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
+                    return (
+                        <div key={month} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+                            <div className="p-4 border-b border-slate-700 flex items-center justify-between bg-slate-800/50">
+                                <div className="flex items-center gap-2">
+                                    <FiCalendar className="text-emerald-400" />
+                                    <h2 className="font-bold text-slate-100">{month}</h2>
                                 </div>
-                            ))}
+                                <div className="text-left">
+                                    {Object.entries(monthProfit).map(([cur, amount]) => (
+                                        <div key={cur} className="text-emerald-400 font-bold text-sm">
+                                            {getCurrencySymbol(cur)}{Math.round(amount).toLocaleString()}
+                                        </div>
+                                    ))}
+                                    <div className="text-[10px] text-slate-500">סיכום חודשי</div>
+                                </div>
+                            </div>
+                            <div className="divide-y divide-slate-700/50">
+                                {monthEvents.map(ev => (
+                                    <div key={ev._id} className="p-4 hover:bg-slate-700/30 transition-colors">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <p className="font-bold text-slate-100">{ev.title}</p>
+                                                    {ev.eventType && (
+                                                        <span className="bg-blue-500/10 text-blue-400 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/20">
+                                                            {ev.eventType}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mt-2">
+                                                    <span className="flex items-center gap-1"><FiCalendar size={12} className="text-slate-600" />{new Date(ev.date).toLocaleDateString('he-IL')}</span>
+                                                    {ev.location && <span className="flex items-center gap-1"><FiMapPin size={12} className="text-slate-600" />{ev.location}</span>}
+                                                    {ev.phone_number && (
+                                                        <a href={`tel:${ev.phone_number}`} className="flex items-center gap-1 text-blue-400 hover:underline">
+                                                            <FiPhone size={12} className="text-blue-500" /> {ev.phone_number}
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="text-left mr-4">
+                                                <div className="text-lg font-bold text-emerald-400 whitespace-nowrap">{getCurrencySymbol(ev.currency)}{Math.round(ev.expectedPay).toLocaleString()}</div>
+                                                <div className="text-[10px] text-slate-500">סה״כ לתשלום</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-slate-900/50 rounded-xl p-3 mt-3 space-y-2 text-sm border border-slate-700/50 shadow-inner">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-400 text-xs">רווח כשותף ({partner.percentage}%):</span>
+                                                <span className="text-violet-400 font-bold">{getCurrencySymbol(ev.currency)}{Math.round(ev.partnerShare).toLocaleString()}</span>
+                                            </div>
+                                            {ev.supplierEarnings > 0 && (
+                                                <div className="flex justify-between items-center border-t border-slate-800 pt-2">
+                                                    <span className="text-slate-400 text-xs">שכר כספק:</span>
+                                                    <span className="text-blue-400 font-bold">{getCurrencySymbol(ev.currency)}{Math.round(ev.supplierEarnings).toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {ev.substitutes && ev.substitutes.length > 0 && (
+                                                <div className="mt-2 space-y-1.5 border-t border-slate-800 pt-2">
+                                                    {ev.substitutes.map((sub, i) => (
+                                                        <div key={i} className="flex items-center justify-between bg-orange-500/5 border border-orange-500/10 rounded-lg px-3 py-2">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-400">
+                                                                    <FiUsers size={14} />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-[10px] font-semibold text-orange-400/80">הוחלפת על ידי:</p>
+                                                                    <p className="text-xs text-slate-200 font-bold">
+                                                                        {sub.name}
+                                                                        {sub.role && <span className="text-slate-500 font-normal"> ({sub.role})</span>}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <span className="text-orange-400 font-black text-xs">
+                                                                -{getCurrencySymbol(sub.currency)}{sub.pay.toLocaleString()}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })}
 
                 {/* Linked Band Expenses */}
                 {linkedBandExpenses.length > 0 && (
