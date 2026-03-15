@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { FiPlus, FiSearch, FiShare2, FiCreditCard, FiTrash2, FiChevronDown, FiChevronUp, FiPieChart, FiX, FiEdit2 } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiShare2, FiCreditCard, FiTrash2, FiChevronDown, FiChevronUp, FiPieChart, FiX, FiEdit2, FiLink } from 'react-icons/fi';
 import { PaymentsSkeleton } from '../components/Skeletons';
 
 export default function Payments() {
@@ -9,6 +9,7 @@ export default function Payments() {
     const [payments, setPayments] = useState([]);
     const [events, setEvents] = useState([]);
     const [budgetSummary, setBudgetSummary] = useState(null);
+    const [bandExpenses, setBandExpenses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedEntityId, setExpandedEntityId] = useState(null);
@@ -16,7 +17,8 @@ export default function Payments() {
     // Payment modal (suppliers/partners)
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [selectedEntity, setSelectedEntity] = useState(null);
-    const [paymentForm, setPaymentForm] = useState({ amount: '', currency: 'Shekel', method: 'Cash', note: '', type: 'general', date: new Date().toISOString().split('T')[0] });
+    const [paymentEditId, setPaymentEditId] = useState(null);
+    const [paymentForm, setPaymentForm] = useState({ amount: '', currency: 'Shekel', method: 'Cash', note: '', type: 'general', direction: 'payment', date: new Date().toISOString().split('T')[0] });
 
     // Active sub-tab
     const [activeTab, setActiveTab] = useState('suppliers');
@@ -36,13 +38,14 @@ export default function Payments() {
     const fetchAll = async () => {
         try {
             const currentYear = new Date().getFullYear();
-            const [suppliersRes, partnersRes, paymentsRes, eventsRes, budgetRes, clientRes] = await Promise.all([
+            const [suppliersRes, partnersRes, paymentsRes, eventsRes, budgetRes, clientRes, expensesRes] = await Promise.all([
                 api.get('/suppliers'),
                 api.get('/partners'),
                 api.get('/payments'),
                 api.get('/events'),
                 api.get(`/budget/summary?year=${currentYear}`).catch(() => ({ data: null })),
                 api.get('/client-payments/summary').catch(() => ({ data: null })),
+                api.get(`/budget/expenses?year=${currentYear}`).catch(() => ({ data: [] })),
             ]);
             setSuppliers(suppliersRes.data);
             setPartners(partnersRes.data);
@@ -50,6 +53,7 @@ export default function Payments() {
             setEvents(eventsRes.data);
             setBudgetSummary(budgetRes.data);
             setClientSummary(clientRes.data);
+            setBandExpenses(Array.isArray(expensesRes.data) ? expensesRes.data : []);
         } catch (err) {
             console.error(err);
         } finally {
@@ -87,18 +91,34 @@ export default function Payments() {
                     }
                 });
             });
+
+            // Band expenses linked to this supplier
+            const linkedExpenses = bandExpenses.filter(e =>
+                (e.linkedSupplierId?._id || e.linkedSupplierId) === s._id
+            );
+            const totalBandExpense = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
+
             const totalPaid = { Shekel: 0, Dollar: 0, Euro: 0 };
+            const totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 };
             const entityPayments = payments.filter(p => p.supplierId?._id === s._id || p.supplierId === s._id);
-            entityPayments.forEach(p => { totalPaid[p.currency || 'Shekel'] += p.amount || 0; });
+            entityPayments.forEach(p => {
+                const cur = p.currency || 'Shekel';
+                if (p.direction === 'debt') {
+                    totalDebt[cur] += p.amount || 0;
+                } else {
+                    totalPaid[cur] += p.amount || 0;
+                }
+            });
             const balance = {
-                Shekel: totalExpected.Shekel - totalPaid.Shekel,
-                Dollar: totalExpected.Dollar - totalPaid.Dollar,
-                Euro: totalExpected.Euro - totalPaid.Euro,
+                Shekel: totalExpected.Shekel + totalBandExpense + totalDebt.Shekel - totalPaid.Shekel,
+                Dollar: totalExpected.Dollar + totalDebt.Dollar - totalPaid.Dollar,
+                Euro: totalExpected.Euro + totalDebt.Euro - totalPaid.Euro,
             };
             return {
                 entity: { ...s, displayRole: s.role },
                 type: 'supplier', id: s._id,
-                totalExpected, totalPaid, balance, entityPayments,
+                totalExpected, totalPaid, totalDebt, balance, entityPayments,
+                totalBandExpense, linkedExpenses,
                 hasDebt: Object.values(balance).some(v => v > 0),
                 hasCredit: Object.values(balance).some(v => v < 0),
                 budgetDeduction: 0,
@@ -139,27 +159,44 @@ export default function Payments() {
             });
         });
 
+        // Band expenses linked to this partner or its linked suppliers
+        const linkedExpenses = bandExpenses.filter(e => {
+            if ((e.linkedPartnerId?._id || e.linkedPartnerId) === p._id) return true;
+            if (e.linkedSupplierId && linkedIds.includes(e.linkedSupplierId?._id || e.linkedSupplierId)) return true;
+            return false;
+        });
+        const totalBandExpense = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
+
         const eventEarnings = { ...totalExpected };
         const budgetDeduction = budgetDeductionMap[p._id] || 0;
 
         const totalPaid = { Shekel: 0, Dollar: 0, Euro: 0 };
+        const totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 };
         const entityPayments = payments.filter(pay =>
             pay.partnerId?._id === p._id || pay.partnerId === p._id ||
             linkedIds.includes(pay.supplierId?._id || pay.supplierId)
         );
-        entityPayments.forEach(pay => { totalPaid[pay.currency || 'Shekel'] += pay.amount || 0; });
+        entityPayments.forEach(pay => {
+            const cur = pay.currency || 'Shekel';
+            if (pay.direction === 'debt') {
+                totalDebt[cur] += pay.amount || 0;
+            } else {
+                totalPaid[cur] += pay.amount || 0;
+            }
+        });
 
         const balance = {
-            Shekel: eventEarnings.Shekel - budgetDeduction - totalPaid.Shekel,
-            Dollar: eventEarnings.Dollar - totalPaid.Dollar,
-            Euro: eventEarnings.Euro - totalPaid.Euro,
+            Shekel: eventEarnings.Shekel + totalBandExpense + totalDebt.Shekel - budgetDeduction - totalPaid.Shekel,
+            Dollar: eventEarnings.Dollar + totalDebt.Dollar - totalPaid.Dollar,
+            Euro: eventEarnings.Euro + totalDebt.Euro - totalPaid.Euro,
         };
 
         return {
             entity: { ...p, displayRole: `שותף (${p.percentage}%)` },
             type: 'partner', id: p._id,
             totalExpected: eventEarnings,
-            totalPaid, balance, entityPayments,
+            totalPaid, totalDebt, balance, entityPayments,
+            totalBandExpense, linkedExpenses,
             hasDebt: Object.values(balance).some(v => v > 0),
             hasCredit: Object.values(balance).some(v => v < 0),
             budgetDeduction,
@@ -172,9 +209,23 @@ export default function Payments() {
         entity.displayRole.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const openPaymentModal = (entityData) => {
+    const openPaymentModal = (entityData, editPayment = null) => {
         setSelectedEntity({ id: entityData.id, name: entityData.entity.name, role: entityData.entity.displayRole, type: entityData.type });
-        setPaymentForm({ amount: '', currency: 'Shekel', method: 'Cash', note: '', type: 'general', date: new Date().toISOString().split('T')[0] });
+        if (editPayment) {
+            setPaymentEditId(editPayment._id);
+            setPaymentForm({
+                amount: editPayment.amount,
+                currency: editPayment.currency || 'Shekel',
+                method: editPayment.method,
+                note: editPayment.note || '',
+                type: editPayment.method === 'Loan' ? 'loan' : 'general',
+                direction: editPayment.direction || 'payment',
+                date: new Date(editPayment.date).toISOString().split('T')[0],
+            });
+        } else {
+            setPaymentEditId(null);
+            setPaymentForm({ amount: '', currency: 'Shekel', method: 'Cash', note: '', type: 'general', direction: 'payment', date: new Date().toISOString().split('T')[0] });
+        }
         setIsPaymentModalOpen(true);
     };
 
@@ -187,10 +238,16 @@ export default function Payments() {
                 method: paymentForm.type === 'loan' ? 'Loan' : paymentForm.method,
                 date: paymentForm.date,
                 note: paymentForm.note || (paymentForm.type === 'loan' ? 'הלוואה' : ''),
+                direction: paymentForm.direction,
             };
-            if (selectedEntity.type === 'partner') payload.partnerId = selectedEntity.id;
-            else payload.supplierId = selectedEntity.id;
-            await api.post('/payments', payload);
+            if (paymentEditId) {
+                // Keep the entity IDs from the existing payment
+                await api.put(`/payments/${paymentEditId}`, payload);
+            } else {
+                if (selectedEntity.type === 'partner') payload.partnerId = selectedEntity.id;
+                else payload.supplierId = selectedEntity.id;
+                await api.post('/payments', payload);
+            }
             setIsPaymentModalOpen(false);
             fetchAll();
         } catch (err) { console.error(err); }
@@ -295,9 +352,9 @@ export default function Payments() {
                         {filteredBalances.length === 0 && (
                             <p className="text-center text-slate-500 py-16">לא נמצאו שותפים או ספקים.</p>
                         )}
-                        {filteredBalances.map(({ entity, type, id, totalExpected, totalPaid, balance, entityPayments, hasDebt, budgetDeduction }) => {
+                        {filteredBalances.map(({ entity, type, id, totalExpected, totalPaid, totalDebt, balance, entityPayments, hasDebt, budgetDeduction, totalBandExpense, linkedExpenses }) => {
                             const isExpanded = expandedEntityId === id;
-                            const currencies = ['Shekel', 'Dollar', 'Euro'].filter(c => totalExpected[c] > 0 || totalPaid[c] > 0);
+                            const currencies = ['Shekel', 'Dollar', 'Euro'].filter(c => totalExpected[c] > 0 || totalPaid[c] > 0 || (totalDebt[c] || 0) > 0 || (c === 'Shekel' && totalBandExpense > 0));
                             return (
                                 <div key={id} className={`bg-slate-800 rounded-2xl border overflow-hidden transition-all ${hasDebt ? 'border-red-500/30' : 'border-slate-700'}`}>
                                     <div
@@ -354,10 +411,22 @@ export default function Payments() {
                                                                 <span className="text-slate-400">רווח מאירועים</span>
                                                                 <span className="text-blue-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalExpected[cur]).toLocaleString()}</span>
                                                             </div>
+                                                            {cur === 'Shekel' && totalBandExpense > 0 && (
+                                                                <div className="flex justify-between">
+                                                                    <span className="text-slate-400 flex items-center gap-1"><FiLink size={10} /> הוצאות להקה מקושרות</span>
+                                                                    <span className="text-cyan-400 font-semibold">₪{Math.round(totalBandExpense).toLocaleString()}</span>
+                                                                </div>
+                                                            )}
                                                             {type === 'partner' && cur === 'Shekel' && budgetDeduction > 0 && (
                                                                 <div className="flex justify-between">
                                                                     <span className="text-slate-400 text-xs">הפחתת תקציב</span>
                                                                     <span className="text-orange-400 font-semibold">-₪{Math.round(budgetDeduction).toLocaleString()}</span>
+                                                                </div>
+                                                            )}
+                                                            {(totalDebt[cur] || 0) > 0 && (
+                                                                <div className="flex justify-between">
+                                                                    <span className="text-slate-400">חוב (אני חייב לו)</span>
+                                                                    <span className="text-amber-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalDebt[cur]).toLocaleString()}</span>
                                                                 </div>
                                                             )}
                                                             <div className="flex justify-between">
@@ -375,6 +444,26 @@ export default function Payments() {
                                                 </div>
                                             )}
 
+                                            {/* Linked band expenses section */}
+                                            {linkedExpenses && linkedExpenses.length > 0 && (
+                                                <div className="p-4 border-b border-slate-700/50">
+                                                    <p className="text-xs text-slate-500 font-medium mb-3 flex items-center gap-1">
+                                                        <FiLink size={12} /> הוצאות להקה מקושרות
+                                                    </p>
+                                                    <div className="space-y-2">
+                                                        {linkedExpenses.map(exp => (
+                                                            <div key={exp._id} className="flex justify-between items-center bg-slate-800 px-3 py-2.5 rounded-lg border border-cyan-500/20">
+                                                                <div>
+                                                                    <p className="text-sm font-medium text-slate-200">{exp.description}</p>
+                                                                    <p className="text-xs text-slate-500">{new Date(exp.date).toLocaleDateString('he-IL')}</p>
+                                                                </div>
+                                                                <span className="text-cyan-400 font-bold">₪{exp.amount.toLocaleString()}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <div className="p-4">
                                                 <p className="text-xs text-slate-500 font-medium mb-3">היסטוריית תשלומים</p>
                                                 {entityPayments.length === 0 ? (
@@ -382,11 +471,16 @@ export default function Payments() {
                                                 ) : (
                                                     <div className="space-y-2">
                                                         {entityPayments.map(pay => (
-                                                            <div key={pay._id} className="flex justify-between items-center bg-slate-800 px-3 py-2.5 rounded-lg border border-slate-700">
+                                                            <div key={pay._id} className={`flex justify-between items-center bg-slate-800 px-3 py-2.5 rounded-lg border ${pay.direction === 'debt' ? 'border-amber-500/30' : 'border-slate-700'}`}>
                                                                 <div className="flex items-center gap-2">
-                                                                    <FiCreditCard size={14} className="text-slate-500" />
+                                                                    <FiCreditCard size={14} className={pay.direction === 'debt' ? 'text-amber-500' : 'text-slate-500'} />
                                                                     <div>
-                                                                        <p className="text-sm font-medium text-slate-200">{methodLabel(pay.method)}</p>
+                                                                        <p className="text-sm font-medium text-slate-200">
+                                                                            {methodLabel(pay.method)}
+                                                                            {pay.direction === 'debt' && (
+                                                                                <span className="mr-2 text-xs bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">חוב</span>
+                                                                            )}
+                                                                        </p>
                                                                         <p className="text-xs text-slate-500">
                                                                             {new Date(pay.date).toLocaleDateString('he-IL')}
                                                                             {pay.eventId?.title && ` • ${pay.eventId.title}`}
@@ -395,7 +489,16 @@ export default function Payments() {
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex items-center gap-3">
-                                                                    <span className="text-emerald-400 font-bold">{getCurrencySymbol(pay.currency)}{pay.amount.toLocaleString()}</span>
+                                                                    <span className={`font-bold ${pay.direction === 'debt' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                                                        {pay.direction === 'debt' ? '-' : ''}{getCurrencySymbol(pay.currency)}{pay.amount.toLocaleString()}
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => openPaymentModal({ id, entity, type }, pay)}
+                                                                        className="p-1 text-slate-500 hover:text-blue-400 transition"
+                                                                        title="ערוך תשלום"
+                                                                    >
+                                                                        <FiEdit2 size={13} />
+                                                                    </button>
                                                                     <button onClick={() => handleDeletePayment(pay._id)} className="p-1 text-slate-500 hover:text-red-400 transition">
                                                                         <FiTrash2 size={13} />
                                                                     </button>
@@ -579,12 +682,31 @@ export default function Payments() {
                                 {selectedEntity.type === 'partner' ? <FiPieChart size={18} /> : selectedEntity.name.charAt(0)}
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-white">רישום תשלום</h3>
+                                <h3 className="text-lg font-bold text-white">{paymentEditId ? 'עריכת תשלום' : 'רישום תשלום'}</h3>
                                 <p className="text-sm text-slate-400">{selectedEntity.name} • {selectedEntity.role}</p>
                             </div>
                         </div>
 
                         <form onSubmit={handleAddPayment} className="space-y-4">
+                            {/* Direction: payment or debt */}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-2">סוג פעולה</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button type="button" onClick={() => setPaymentForm({ ...paymentForm, direction: 'payment' })} className={`py-2.5 rounded-lg text-sm font-medium transition ${paymentForm.direction === 'payment' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
+                                        💰 תשלום לספק
+                                    </button>
+                                    <button type="button" onClick={() => setPaymentForm({ ...paymentForm, direction: 'debt' })} className={`py-2.5 rounded-lg text-sm font-medium transition ${paymentForm.direction === 'debt' ? 'bg-amber-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
+                                        📝 חוב לספק
+                                    </button>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1.5">
+                                    {paymentForm.direction === 'payment'
+                                        ? 'אני משלם לספק/שותף'
+                                        : 'לקחתי/קיבלתי כסף מהספק/שותף — אני חייב לו'}
+                                </p>
+                            </div>
+
+                            {/* Payment type (general/loan) */}
                             <div className="grid grid-cols-2 gap-2">
                                 <button type="button" onClick={() => setPaymentForm({ ...paymentForm, type: 'general' })} className={`py-2.5 rounded-lg text-sm font-medium transition ${paymentForm.type === 'general' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
                                     תשלום רגיל
@@ -642,7 +764,9 @@ export default function Payments() {
 
                             <div className="flex justify-end gap-3 mt-2">
                                 <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="px-4 py-2 text-slate-400 hover:text-white transition">ביטול</button>
-                                <button type="submit" className="px-6 py-2.5 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium transition shadow-lg">אשר תשלום</button>
+                                <button type="submit" className={`px-6 py-2.5 rounded-lg text-white font-medium transition shadow-lg ${paymentForm.direction === 'debt' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-500 hover:bg-blue-600'}`}>
+                                    {paymentEditId ? 'עדכן' : 'אשר'} {paymentForm.direction === 'debt' ? 'חוב' : 'תשלום'}
+                                </button>
                             </div>
                         </form>
                     </div>
