@@ -3,7 +3,7 @@ import api from '../api';
 import {
   FiPlus, FiTrash2, FiEdit2, FiDollarSign, FiCalendar,
   FiTrendingDown, FiTrendingUp, FiAlertCircle, FiCheckCircle,
-  FiX, FiSave
+  FiX, FiSave, FiSearch, FiLink
 } from 'react-icons/fi';
 
 const PAYMENT_METHODS = [
@@ -44,9 +44,17 @@ export default function BudgetExpenses() {
     installments: 1,
     date: todayStr(),
     description: '',
+    linkedSupplierId: '',
+    linkedPartnerId: '',
   });
   const [expenseError, setExpenseError] = useState('');
   const [expenseSaving, setExpenseSaving] = useState(false);
+
+  // Supplier/Partner search for linking
+  const [suppliers, setSuppliers] = useState([]);
+  const [partners, setPartners] = useState([]);
+  const [linkSearch, setLinkSearch] = useState('');
+  const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
 
   const availableYears = useMemo(() => {
     const years = new Set();
@@ -64,7 +72,7 @@ export default function BudgetExpenses() {
         setBudgetEditing(false);
       } else {
         setBudgetForm({ amount: '', deductionDay: 10 });
-        setBudgetEditing(true); // open form to create budget if none exists
+        setBudgetEditing(true);
       }
     } catch (e) {
       console.error(e);
@@ -73,7 +81,18 @@ export default function BudgetExpenses() {
     }
   };
 
-  useEffect(() => { fetchSummary(); }, [selectedYear]);
+  const fetchEntities = async () => {
+    try {
+      const [suppRes, partRes] = await Promise.all([
+        api.get('/suppliers'),
+        api.get('/partners'),
+      ]);
+      setSuppliers(suppRes.data);
+      setPartners(partRes.data);
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => { fetchSummary(); fetchEntities(); }, [selectedYear]);
 
   // ---- Budget handlers ----
   const handleBudgetSave = async (e) => {
@@ -112,8 +131,10 @@ export default function BudgetExpenses() {
   // ---- Expense handlers ----
   const openNewExpense = () => {
     setExpenseEditId(null);
-    setExpenseForm({ amount: '', method: 'Cash', installments: 1, date: todayStr(), description: '' });
+    setExpenseForm({ amount: '', method: 'Cash', installments: 1, date: todayStr(), description: '', linkedSupplierId: '', linkedPartnerId: '' });
     setExpenseError('');
+    setLinkSearch('');
+    setLinkDropdownOpen(false);
     setExpenseModalOpen(true);
   };
 
@@ -125,8 +146,12 @@ export default function BudgetExpenses() {
       installments: exp.installments,
       date: new Date(exp.date).toISOString().split('T')[0],
       description: exp.description,
+      linkedSupplierId: exp.linkedSupplierId?._id || exp.linkedSupplierId || '',
+      linkedPartnerId: exp.linkedPartnerId?._id || exp.linkedPartnerId || '',
     });
     setExpenseError('');
+    setLinkSearch('');
+    setLinkDropdownOpen(false);
     setExpenseModalOpen(true);
   };
 
@@ -141,6 +166,8 @@ export default function BudgetExpenses() {
         installments: Number(expenseForm.installments),
         date: expenseForm.date,
         description: expenseForm.description,
+        linkedSupplierId: expenseForm.linkedSupplierId || null,
+        linkedPartnerId: expenseForm.linkedPartnerId || null,
       };
       if (expenseEditId) {
         await api.put(`/budget/expenses/${expenseEditId}`, payload);
@@ -165,6 +192,47 @@ export default function BudgetExpenses() {
   };
 
   const methodLabel = (m) => PAYMENT_METHODS.find(x => x.value === m)?.label || m;
+
+  // Linked entity helpers
+  const getLinkedEntityName = (exp) => {
+    if (exp.linkedSupplierId && typeof exp.linkedSupplierId === 'object') {
+      return `${exp.linkedSupplierId.name} (${exp.linkedSupplierId.role || 'ספק'})`;
+    }
+    if (exp.linkedPartnerId && typeof exp.linkedPartnerId === 'object') {
+      return `${exp.linkedPartnerId.name} (שותף)`;
+    }
+    return null;
+  };
+
+  const getSelectedLinkName = () => {
+    if (expenseForm.linkedSupplierId) {
+      const s = suppliers.find(s => s._id === expenseForm.linkedSupplierId);
+      return s ? `${s.name} (${s.role})` : '';
+    }
+    if (expenseForm.linkedPartnerId) {
+      const p = partners.find(p => p._id === expenseForm.linkedPartnerId);
+      return p ? `${p.name} (שותף)` : '';
+    }
+    return '';
+  };
+
+  // Filtered entities for link search
+  const filteredLinkEntities = useMemo(() => {
+    if (!linkSearch.trim()) return [];
+    const term = linkSearch.toLowerCase();
+    const results = [];
+    suppliers.forEach(s => {
+      if (s.name.toLowerCase().includes(term) || (s.role && s.role.toLowerCase().includes(term))) {
+        results.push({ type: 'supplier', id: s._id, name: s.name, role: s.role });
+      }
+    });
+    partners.forEach(p => {
+      if (p.name.toLowerCase().includes(term)) {
+        results.push({ type: 'partner', id: p._id, name: p.name, role: 'שותף' });
+      }
+    });
+    return results;
+  }, [linkSearch, suppliers, partners]);
 
   // ---- Derived values ----
   const budgetAmount = summary?.budgetAmount || 0;
@@ -395,56 +463,74 @@ export default function BudgetExpenses() {
             {/* Table header */}
             <div className="hidden md:grid grid-cols-12 gap-2 px-5 py-2 text-xs text-slate-500 font-medium bg-slate-900/30">
               <span className="col-span-1">תאריך</span>
-              <span className="col-span-4">פירוט</span>
+              <span className="col-span-3">פירוט</span>
+              <span className="col-span-2">מקושר לספק/שותף</span>
               <span className="col-span-2">אמצעי תשלום</span>
-              <span className="col-span-2 text-center">תשלומים</span>
+              <span className="col-span-1 text-center">תשלומים</span>
               <span className="col-span-2 text-left">סכום</span>
               <span className="col-span-1"></span>
             </div>
-            {expenses.map(exp => (
-              <div key={exp._id} className="px-5 py-4 hover:bg-slate-700/20 transition grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                {/* Mobile layout */}
-                <div className="md:hidden flex justify-between items-start">
-                  <div>
-                    <p className="font-medium text-slate-100 mb-0.5">{exp.description}</p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(exp.date).toLocaleDateString('he-IL')} •{' '}
-                      {methodLabel(exp.method)}{' '}
-                      {exp.installments > 1 && `• ${exp.installments} תשלומים`}
-                    </p>
+            {expenses.map(exp => {
+              const linkedName = getLinkedEntityName(exp);
+              return (
+                <div key={exp._id} className="px-5 py-4 hover:bg-slate-700/20 transition grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                  {/* Mobile layout */}
+                  <div className="md:hidden flex justify-between items-start">
+                    <div>
+                      <p className="font-medium text-slate-100 mb-0.5">{exp.description}</p>
+                      <p className="text-xs text-slate-500">
+                        {new Date(exp.date).toLocaleDateString('he-IL')} •{' '}
+                        {methodLabel(exp.method)}{' '}
+                        {exp.installments > 1 && `• ${exp.installments} תשלומים`}
+                      </p>
+                      {linkedName && (
+                        <p className="text-xs text-cyan-400 mt-0.5 flex items-center gap-1">
+                          <FiLink size={10} /> {linkedName}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-red-400 font-bold text-lg">₪{exp.amount.toLocaleString()}</span>
+                      <button onClick={() => openEditExpense(exp)} className="p-1.5 text-slate-400 hover:text-blue-400 rounded-lg transition">
+                        <FiEdit2 size={14} />
+                      </button>
+                      <button onClick={() => handleExpenseDelete(exp._id)} className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg transition">
+                        <FiTrash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-red-400 font-bold text-lg">₪{exp.amount.toLocaleString()}</span>
-                    <button onClick={() => openEditExpense(exp)} className="p-1.5 text-slate-400 hover:text-blue-400 rounded-lg transition">
+                  {/* Desktop layout */}
+                  <span className="hidden md:block col-span-1 text-xs text-slate-500">
+                    {new Date(exp.date).toLocaleDateString('he-IL')}
+                  </span>
+                  <span className="hidden md:block col-span-3 text-sm text-slate-200 font-medium">{exp.description}</span>
+                  <span className="hidden md:block col-span-2 text-xs">
+                    {linkedName ? (
+                      <span className="flex items-center gap-1 text-cyan-400">
+                        <FiLink size={11} /> {linkedName}
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
+                  </span>
+                  <span className="hidden md:block col-span-2 text-xs text-slate-400">{methodLabel(exp.method)}</span>
+                  <span className="hidden md:block col-span-1 text-xs text-slate-400 text-center">
+                    {exp.installments > 1 ? `${exp.installments} תשלומים` : 'חד-פעמי'}
+                  </span>
+                  <span className="hidden md:block col-span-2 text-sm font-bold text-red-400">
+                    ₪{exp.amount.toLocaleString()}
+                  </span>
+                  <div className="hidden md:flex col-span-1 items-center justify-end gap-1">
+                    <button onClick={() => openEditExpense(exp)} className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition">
                       <FiEdit2 size={14} />
                     </button>
-                    <button onClick={() => handleExpenseDelete(exp._id)} className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg transition">
+                    <button onClick={() => handleExpenseDelete(exp._id)} className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition">
                       <FiTrash2 size={14} />
                     </button>
                   </div>
                 </div>
-                {/* Desktop layout */}
-                <span className="hidden md:block col-span-1 text-xs text-slate-500">
-                  {new Date(exp.date).toLocaleDateString('he-IL')}
-                </span>
-                <span className="hidden md:block col-span-4 text-sm text-slate-200 font-medium">{exp.description}</span>
-                <span className="hidden md:block col-span-2 text-xs text-slate-400">{methodLabel(exp.method)}</span>
-                <span className="hidden md:block col-span-2 text-xs text-slate-400 text-center">
-                  {exp.installments > 1 ? `${exp.installments} תשלומים` : 'חד-פעמי'}
-                </span>
-                <span className="hidden md:block col-span-2 text-sm font-bold text-red-400">
-                  ₪{exp.amount.toLocaleString()}
-                </span>
-                <div className="hidden md:flex col-span-1 items-center justify-end gap-1">
-                  <button onClick={() => openEditExpense(exp)} className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition">
-                    <FiEdit2 size={14} />
-                  </button>
-                  <button onClick={() => handleExpenseDelete(exp._id)} className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition">
-                    <FiTrash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {/* Total row */}
             <div className="px-5 py-4 bg-slate-900/40 flex justify-between items-center">
               <span className="text-slate-400 font-semibold text-sm">סה״כ הוצאות</span>
@@ -519,7 +605,7 @@ export default function BudgetExpenses() {
       {/* ===== EXPENSE MODAL ===== */}
       {expenseModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
+          <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-xl font-bold text-slate-100">
                 {expenseEditId ? 'עריכת הוצאה' : 'הוצאה חדשה'}
@@ -546,6 +632,67 @@ export default function BudgetExpenses() {
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-amber-500 transition"
                   placeholder="רכישת ציוד, חזרה, וכו׳..."
                 />
+              </div>
+
+              {/* Linked supplier/partner search */}
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-1">
+                  <FiLink size={13} className="inline ml-1" />
+                  קישור לספק/שותף (לא חובה)
+                </label>
+                {(expenseForm.linkedSupplierId || expenseForm.linkedPartnerId) ? (
+                  <div className="flex items-center gap-2 bg-cyan-500/10 border border-cyan-500/30 rounded-xl px-4 py-2.5">
+                    <FiLink size={14} className="text-cyan-400 flex-shrink-0" />
+                    <span className="text-cyan-300 text-sm font-medium flex-grow">{getSelectedLinkName()}</span>
+                    <button
+                      type="button"
+                      onClick={() => setExpenseForm({ ...expenseForm, linkedSupplierId: '', linkedPartnerId: '' })}
+                      className="p-1 text-slate-400 hover:text-red-400 transition"
+                    >
+                      <FiX size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <input
+                      type="text"
+                      value={linkSearch}
+                      onChange={e => { setLinkSearch(e.target.value); setLinkDropdownOpen(true); }}
+                      onFocus={() => setLinkDropdownOpen(true)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl pr-9 pl-4 py-2.5 text-slate-100 focus:outline-none focus:border-cyan-500 transition text-sm"
+                      placeholder="חפש ספק או שותף לקישור..."
+                    />
+                    {linkDropdownOpen && filteredLinkEntities.length > 0 && (
+                      <div className="absolute top-full mt-1 left-0 right-0 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-h-48 overflow-y-auto z-50">
+                        {filteredLinkEntities.map(ent => (
+                          <button
+                            key={`${ent.type}-${ent.id}`}
+                            type="button"
+                            onClick={() => {
+                              if (ent.type === 'supplier') {
+                                setExpenseForm({ ...expenseForm, linkedSupplierId: ent.id, linkedPartnerId: '' });
+                              } else {
+                                setExpenseForm({ ...expenseForm, linkedPartnerId: ent.id, linkedSupplierId: '' });
+                              }
+                              setLinkSearch('');
+                              setLinkDropdownOpen(false);
+                            }}
+                            className="w-full text-right px-4 py-2.5 hover:bg-slate-800 transition flex items-center gap-2 border-b border-slate-800 last:border-0"
+                          >
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${ent.type === 'partner' ? 'bg-gradient-to-br from-violet-500 to-purple-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>
+                              {ent.name.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-slate-200">{ent.name}</p>
+                              <p className="text-xs text-slate-500">{ent.role}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

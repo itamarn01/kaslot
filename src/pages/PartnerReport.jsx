@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
-import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiTrendingUp, FiDollarSign } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiTrendingUp, FiDollarSign, FiLink } from 'react-icons/fi';
 
 export default function PartnerReport() {
     const { id } = useParams();
@@ -43,12 +43,12 @@ export default function PartnerReport() {
         </div>
     );
 
-    const { partner, events, payments, totalExpected, totalPaid, budgetInfo } = report;
+    const { partner, events, payments, totalExpected, totalPaid, totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 }, linkedBandExpenses = [], totalBandExpenses = { Shekel: 0 }, budgetInfo } = report;
     const totalBudgetDeduction = (budgetInfo?.totalBudgetDeduction || 0);
     const balance = {
-        Shekel: totalExpected.Shekel - totalBudgetDeduction - totalPaid.Shekel,
-        Dollar: totalExpected.Dollar - totalPaid.Dollar,
-        Euro: totalExpected.Euro - totalPaid.Euro,
+        Shekel: totalExpected.Shekel + (totalBandExpenses.Shekel || 0) + (totalDebt.Shekel || 0) - totalBudgetDeduction - totalPaid.Shekel,
+        Dollar: totalExpected.Dollar + (totalDebt.Dollar || 0) - totalPaid.Dollar,
+        Euro: totalExpected.Euro + (totalDebt.Euro || 0) - totalPaid.Euro,
     };
 
     return (
@@ -72,7 +72,7 @@ export default function PartnerReport() {
                 {/* Balance Summary */}
                 <div className="grid grid-cols-3 gap-3">
                     {['Shekel', 'Dollar', 'Euro'].map(cur => (
-                        (totalExpected[cur] > 0 || totalPaid[cur] > 0) && (
+                        (totalExpected[cur] > 0 || totalPaid[cur] > 0 || (totalDebt[cur] || 0) > 0 || (cur === 'Shekel' && ((totalBandExpenses.Shekel || 0) > 0))) && (
                             <div key={cur} className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
                                 <p className="text-xs text-slate-500 mb-3 font-medium">{cur === 'Shekel' ? 'שקל ₪' : cur === 'Dollar' ? 'דולר $' : 'יורו €'}</p>
                                 <div className="space-y-1.5 text-sm">
@@ -80,10 +80,22 @@ export default function PartnerReport() {
                                         <span className="text-slate-400">רווח מאירועים</span>
                                         <span className="text-blue-400 font-bold">{getCurrencySymbol(cur)}{Math.round(totalExpected[cur]).toLocaleString()}</span>
                                     </div>
+                                    {cur === 'Shekel' && (totalBandExpenses.Shekel || 0) > 0 && (
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400 text-xs flex items-center gap-1"><FiLink size={9} /> הוצאות להקה</span>
+                                            <span className="text-cyan-400 font-bold">₪{(totalBandExpenses.Shekel || 0).toLocaleString()}</span>
+                                        </div>
+                                    )}
                                     {cur === 'Shekel' && totalBudgetDeduction > 0 && (
                                         <div className="flex justify-between">
                                             <span className="text-slate-400 text-xs text-orange-400/80">הפחתת תקציב</span>
                                             <span className="text-orange-400 font-bold">-₪{Math.round(totalBudgetDeduction).toLocaleString()}</span>
+                                        </div>
+                                    )}
+                                    {(totalDebt[cur] || 0) > 0 && (
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400 text-xs">חוב (מגיע לי)</span>
+                                            <span className="text-amber-400 font-bold">{getCurrencySymbol(cur)}{(totalDebt[cur] || 0).toLocaleString()}</span>
                                         </div>
                                     )}
                                     <div className="flex justify-between">
@@ -190,15 +202,36 @@ export default function PartnerReport() {
                     </div>
                 )}
 
+                {/* Linked Band Expenses */}
+                {linkedBandExpenses.length > 0 && (
+                    <div className="bg-slate-800 rounded-2xl border border-cyan-500/20 overflow-hidden">
+                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                            <FiLink className="text-cyan-400" />
+                            <h2 className="font-bold text-slate-100">הוצאות להקה מקושרות ({linkedBandExpenses.length})</h2>
+                        </div>
+                        <div className="divide-y divide-slate-700">
+                            {linkedBandExpenses.map(exp => (
+                                <div key={exp._id} className="p-4 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-slate-100">{exp.description}</p>
+                                        <p className="text-xs text-slate-500 mt-1">{new Date(exp.date).toLocaleDateString('he-IL')}</p>
+                                    </div>
+                                    <span className="text-cyan-400 font-bold">₪{exp.amount.toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Payments */}
                 {payments.length > 0 && (
                     <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
                         <div className="p-4 border-b border-slate-700 flex items-center gap-2">
                             <FiCreditCard className="text-purple-400" />
-                            <h2 className="font-bold text-slate-100">תשלומים ({payments.length})</h2>
+                            <h2 className="font-bold text-slate-100">תשלומים ({payments.filter(p => p.direction !== 'debt').length})</h2>
                         </div>
                         <div className="divide-y divide-slate-700">
-                            {payments.map(pay => (
+                            {payments.filter(p => p.direction !== 'debt').map(pay => (
                                 <div key={pay._id} className="p-4 flex justify-between items-center">
                                     <div>
                                         <p className="font-medium text-slate-100">{methodLabel(pay.method)}</p>
@@ -215,7 +248,31 @@ export default function PartnerReport() {
                     </div>
                 )}
 
-                {events.length === 0 && payments.length === 0 && (
+                {/* Debts */}
+                {payments.filter(p => p.direction === 'debt').length > 0 && (
+                    <div className="bg-slate-800 rounded-2xl border border-amber-500/20 overflow-hidden">
+                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                            <span className="text-amber-400">📝</span>
+                            <h2 className="font-bold text-slate-100">חובות ({payments.filter(p => p.direction === 'debt').length})</h2>
+                        </div>
+                        <div className="divide-y divide-slate-700">
+                            {payments.filter(p => p.direction === 'debt').map(pay => (
+                                <div key={pay._id} className="p-4 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-slate-100">{methodLabel(pay.method)}</p>
+                                        <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                                            <span>{new Date(pay.date).toLocaleDateString('he-IL')}</span>
+                                            {pay.note && <span>{pay.note}</span>}
+                                        </div>
+                                    </div>
+                                    <span className="text-amber-400 font-bold">{getCurrencySymbol(pay.currency)}{pay.amount.toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {events.length === 0 && payments.length === 0 && linkedBandExpenses.length === 0 && (
                     <div className="text-center text-slate-500 py-10">אין נתונים להצגה עדיין.</div>
                 )}
 
