@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
-import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiTrendingUp, FiDollarSign, FiLink, FiPhone } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiTrendingUp, FiDollarSign, FiLink, FiPhone, FiUsers } from 'react-icons/fi';
 
 export default function PartnerReport() {
     const { id } = useParams();
