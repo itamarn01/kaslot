@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
-import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch, FiDownload, FiUpload, FiSend } from 'react-icons/fi';
+import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch, FiDownload, FiUpload, FiSend, FiRefreshCw } from 'react-icons/fi';
 import Select from 'react-select';
 import { EventsSkeleton } from '../components/Skeletons';
 
@@ -87,6 +87,19 @@ export default function Events() {
     const [sheetsUrl, setSheetsUrl] = useState('');
     const [sheetsImportType, setSheetsImportType] = useState('events');
 
+    // Google Calendar Sync state
+    const [isGcalModalOpen, setIsGcalModalOpen] = useState(false);
+    const [gcalStep, setGcalStep] = useState('calendars'); // 'calendars' | 'events'
+    const [gcalCalendars, setGcalCalendars] = useState([]);
+    const [gcalSelectedCalendar, setGcalSelectedCalendar] = useState(null);
+    const [gcalEvents, setGcalEvents] = useState([]);
+    const [gcalSelectedEventIds, setGcalSelectedEventIds] = useState([]);
+    const [gcalLoading, setGcalLoading] = useState(false);
+    const [gcalImporting, setGcalImporting] = useState(false);
+    const [gcalResult, setGcalResult] = useState(null);
+    const [gcalSyncing, setGcalSyncing] = useState(false);
+    const [gcalSyncResult, setGcalSyncResult] = useState(null);
+
     const fileInputRef = useRef(null);
     const dataMenuRef = useRef(null);
 
@@ -101,6 +114,8 @@ export default function Events() {
 
     useEffect(() => {
         fetchData();
+        // Auto-sync Google Calendar events on load
+        handleGcalAutoSync();
     }, []);
 
     // Close data menu on outside click
@@ -364,6 +379,97 @@ export default function Events() {
         }
     };
 
+    // ========== Google Calendar Sync Handlers ==========
+    const handleOpenGcalModal = async () => {
+        setIsGcalModalOpen(true);
+        setGcalStep('calendars');
+        setGcalCalendars([]);
+        setGcalSelectedCalendar(null);
+        setGcalEvents([]);
+        setGcalSelectedEventIds([]);
+        setGcalResult(null);
+        setGcalLoading(true);
+        try {
+            const res = await api.get('/calendar/calendars');
+            setGcalCalendars(res.data.calendars || []);
+        } catch (err) {
+            setGcalResult({ success: false, message: err.response?.data?.message || 'שגיאה בטעינת יומנים. ודא שחיברת חשבון Google בהגדרות.' });
+        } finally {
+            setGcalLoading(false);
+        }
+    };
+
+    const handleSelectCalendar = async (cal) => {
+        setGcalSelectedCalendar(cal);
+        setGcalStep('events');
+        setGcalLoading(true);
+        setGcalResult(null);
+        try {
+            const res = await api.get(`/calendar/calendars/${encodeURIComponent(cal.id)}/events`);
+            setGcalEvents(res.data.events || []);
+            // Auto-select non-imported events
+            const notImported = (res.data.events || []).filter(e => !e.alreadyImported).map(e => e.id);
+            setGcalSelectedEventIds(notImported);
+        } catch (err) {
+            setGcalResult({ success: false, message: err.response?.data?.message || 'שגיאה בטעינת אירועים מהיומן' });
+        } finally {
+            setGcalLoading(false);
+        }
+    };
+
+    const handleGcalImport = async () => {
+        if (gcalSelectedEventIds.length === 0) return;
+        setGcalImporting(true);
+        setGcalResult(null);
+        try {
+            const res = await api.post('/calendar/import-events', {
+                calendarId: gcalSelectedCalendar.id,
+                eventIds: gcalSelectedEventIds,
+            });
+            setGcalResult({ success: true, message: res.data.message });
+            fetchData();
+            // Refresh the event list to show updated status
+            const evRes = await api.get(`/calendar/calendars/${encodeURIComponent(gcalSelectedCalendar.id)}/events`);
+            setGcalEvents(evRes.data.events || []);
+            setGcalSelectedEventIds([]);
+        } catch (err) {
+            setGcalResult({ success: false, message: err.response?.data?.message || 'שגיאה בייבוא אירועים' });
+        } finally {
+            setGcalImporting(false);
+        }
+    };
+
+    const handleGcalSync = async () => {
+        setGcalSyncing(true);
+        setGcalSyncResult(null);
+        try {
+            const res = await api.post('/calendar/sync');
+            setGcalSyncResult({ success: true, message: res.data.message });
+            fetchData();
+        } catch (err) {
+            setGcalSyncResult({ success: false, message: err.response?.data?.message || 'שגיאה בסנכרון' });
+        } finally {
+            setGcalSyncing(false);
+        }
+    };
+
+    const handleGcalAutoSync = async () => {
+        try {
+            await api.post('/calendar/sync');
+            // Silently sync in background, just refresh data
+        } catch (err) {
+            // Silent fail - user might not have Google connected
+        }
+    };
+
+    const toggleGcalEventSelection = (eventId) => {
+        setGcalSelectedEventIds(prev =>
+            prev.includes(eventId)
+                ? prev.filter(id => id !== eventId)
+                : [...prev, eventId]
+        );
+    };
+
     const handleImportSheets = async () => {
         if (!sheetsUrl) return;
         setImporting(true);
@@ -485,6 +591,12 @@ export default function Events() {
                     </div>
 
                     <button
+                        onClick={handleOpenGcalModal}
+                        className="flex shrink-0 items-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-4 py-2.5 rounded-xl transition font-medium text-sm border border-blue-500/20"
+                    >
+                        <FiCalendar size={16} /> יומן Google
+                    </button>
+                    <button
                         onClick={() => openEventModal()}
                         className="flex shrink-0 items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-2.5 rounded-xl transition shadow-lg font-medium"
                     >
@@ -527,7 +639,14 @@ export default function Events() {
                                             onClick={() => toggleEventExpand(ev._id)}
                                         >
                                             <div>
-                                                <h3 className="text-xl font-bold text-slate-100">{ev.title}</h3>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <h3 className="text-xl font-bold text-slate-100">{ev.title}</h3>
+                                                    {ev.fromGoogleCalendar && (
+                                                        <span className="flex items-center gap-1 text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20 font-medium">
+                                                            📅 יומן Google
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-slate-400">
                                                     <span className="flex items-center gap-1"><FiCalendar /> {new Date(ev.date).toLocaleDateString('he-IL')}</span>
                                                     {ev.location && <span className="flex items-center gap-1"><FiMapPin /> {ev.location}</span>}
@@ -995,6 +1114,185 @@ export default function Events() {
                                 >
                                     {importing ? '⏳ מייבא...' : 'ייבוא'}
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* GOOGLE CALENDAR SYNC MODAL */}
+            {isGcalModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-lg border border-slate-700 shadow-2xl max-h-[85vh] flex flex-col">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-2xl font-bold flex items-center gap-2">
+                                📅 {gcalStep === 'calendars' ? 'בחר יומן Google' : 'בחר אירועים לייבוא'}
+                            </h3>
+                            {gcalStep === 'events' && (
+                                <button
+                                    onClick={() => { setGcalStep('calendars'); setGcalResult(null); }}
+                                    className="text-sm text-blue-400 hover:text-blue-300 transition"
+                                >
+                                    ← חזור ליומנים
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Sync status banner */}
+                        {gcalSyncResult && (
+                            <div className={`mb-3 p-3 rounded-xl text-sm font-medium ${gcalSyncResult.success ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                                {gcalSyncResult.success ? '✅' : '❌'} {gcalSyncResult.message}
+                            </div>
+                        )}
+
+                        <div className="flex-1 overflow-y-auto min-h-0">
+                            {gcalLoading ? (
+                                <div className="flex items-center justify-center py-12">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent"></div>
+                                    <span className="mr-3 text-slate-400">טוען...</span>
+                                </div>
+                            ) : gcalStep === 'calendars' ? (
+                                <div className="space-y-2">
+                                    {gcalCalendars.length === 0 && !gcalResult && (
+                                        <p className="text-center text-slate-500 py-8">לא נמצאו יומנים. ודא שחיברת חשבון Google בהגדרות.</p>
+                                    )}
+                                    {gcalCalendars.map(cal => (
+                                        <button
+                                            key={cal.id}
+                                            onClick={() => handleSelectCalendar(cal)}
+                                            className="w-full text-right p-4 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-700/70 hover:border-blue-500/30 transition flex items-center gap-3"
+                                        >
+                                            <div
+                                                className="w-4 h-4 rounded-full shrink-0"
+                                                style={{ backgroundColor: cal.backgroundColor }}
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium text-slate-100 truncate">
+                                                    {cal.summary}
+                                                    {cal.primary && <span className="text-xs text-blue-400 mr-2">(ראשי)</span>}
+                                                </p>
+                                                {cal.description && (
+                                                    <p className="text-xs text-slate-500 truncate">{cal.description}</p>
+                                                )}
+                                            </div>
+                                            <FiChevronDown className="text-slate-500 rotate-[-90deg]" />
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {gcalEvents.length === 0 && !gcalResult && (
+                                        <p className="text-center text-slate-500 py-8">לא נמצאו אירועים ביומן זה מתחילת השנה.</p>
+                                    )}
+
+                                    {/* Select all / deselect all */}
+                                    {gcalEvents.filter(e => !e.alreadyImported).length > 0 && (
+                                        <div className="flex items-center gap-3 mb-2 pb-2 border-b border-slate-700">
+                                            <button
+                                                onClick={() => setGcalSelectedEventIds(gcalEvents.filter(e => !e.alreadyImported).map(e => e.id))}
+                                                className="text-xs text-blue-400 hover:text-blue-300"
+                                            >
+                                                בחר הכל
+                                            </button>
+                                            <span className="text-slate-600">|</span>
+                                            <button
+                                                onClick={() => setGcalSelectedEventIds([])}
+                                                className="text-xs text-slate-400 hover:text-slate-300"
+                                            >
+                                                נקה בחירה
+                                            </button>
+                                            <span className="text-xs text-slate-500 mr-auto">
+                                                {gcalSelectedEventIds.length} נבחרו
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {gcalEvents.map(ev => {
+                                        const isSelected = gcalSelectedEventIds.includes(ev.id);
+                                        const isImported = ev.alreadyImported;
+                                        return (
+                                            <label
+                                                key={ev.id}
+                                                className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                                                    isImported
+                                                        ? 'bg-emerald-500/5 border-emerald-500/20 opacity-60 cursor-default'
+                                                        : isSelected
+                                                            ? 'bg-blue-500/10 border-blue-500/30'
+                                                            : 'bg-slate-900 border-slate-700 hover:border-slate-600'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected || isImported}
+                                                    disabled={isImported}
+                                                    onChange={() => toggleGcalEventSelection(ev.id)}
+                                                    className="w-4 h-4 mt-1 rounded accent-blue-500 shrink-0"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-slate-100 text-sm">
+                                                        {ev.summary}
+                                                        {isImported && (
+                                                            <span className="text-xs text-emerald-400 mr-2">✓ כבר מיובא</span>
+                                                        )}
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-3 mt-1 text-xs text-slate-400">
+                                                        <span className="flex items-center gap-1">
+                                                            <FiCalendar size={12} />
+                                                            {new Date(ev.start).toLocaleDateString('he-IL')}
+                                                        </span>
+                                                        {ev.location && (
+                                                            <span className="flex items-center gap-1">
+                                                                <FiMapPin size={12} />
+                                                                {ev.location}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Result banner */}
+                        {gcalResult && (
+                            <div className={`mt-3 p-3 rounded-xl text-sm font-medium ${gcalResult.success ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                                {gcalResult.success ? '✅' : '❌'} {gcalResult.message}
+                            </div>
+                        )}
+
+                        <div className="flex justify-between items-center gap-3 mt-4 pt-4 border-t border-slate-700">
+                            <button
+                                onClick={handleGcalSync}
+                                disabled={gcalSyncing}
+                                className="flex items-center gap-2 text-sm text-slate-400 hover:text-blue-400 transition"
+                                title="סנכרן אירועים שכבר יובאו"
+                            >
+                                <FiRefreshCw size={14} className={gcalSyncing ? 'animate-spin' : ''} />
+                                {gcalSyncing ? 'מסנכרן...' : 'סנכרן עכשיו'}
+                            </button>
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsGcalModalOpen(false)}
+                                    className="px-4 py-2 text-slate-400 hover:text-slate-200 transition"
+                                >
+                                    סגור
+                                </button>
+                                {gcalStep === 'events' && (
+                                    <button
+                                        onClick={handleGcalImport}
+                                        disabled={gcalImporting || gcalSelectedEventIds.length === 0}
+                                        className="flex items-center gap-2 px-6 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-white font-medium transition"
+                                    >
+                                        {gcalImporting ? (
+                                            <>⏳ מייבא...</>
+                                        ) : (
+                                            <>📥 ייבא ({gcalSelectedEventIds.length})</>
+                                        )}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
