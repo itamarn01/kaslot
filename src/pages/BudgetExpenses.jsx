@@ -13,6 +13,7 @@ const PAYMENT_METHODS = [
   { value: 'Bank Transfer', label: 'העברה בנקאית' },
   { value: 'Check', label: "צ'ק" },
   { value: 'Loan', label: 'הלוואה' },
+  { value: 'Credit Card', label: 'אשראי' },
 ];
 
 const MONTHS_HE = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
