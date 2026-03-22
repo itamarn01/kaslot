@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
-import { FiCalendar, FiMapPin, FiUser, FiCreditCard, FiTrendingUp, FiLink, FiPhone } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiUser, FiCreditCard, FiLink, FiPhone, FiFileText, FiKey, FiCheckCircle, FiAlertCircle, FiX, FiExternalLink } from 'react-icons/fi';
+
+const MORNING_STORAGE_KEY = 'morning_api_creds';
 
 export default function SupplierReport() {
     const { id } = useParams();
@@ -9,11 +11,29 @@ export default function SupplierReport() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // Morning API state
+    const [morningToken, setMorningToken] = useState(null);
+    const [morningConnecting, setMorningConnecting] = useState(false);
+    const [morningError, setMorningError] = useState('');
+    const [morningCreds, setMorningCreds] = useState({ apiId: '', apiSecret: '' });
+    const [showMorningForm, setShowMorningForm] = useState(false);
+    const [invoiceLoading, setInvoiceLoading] = useState({});
+    const [invoiceResults, setInvoiceResults] = useState({});
+
     useEffect(() => {
         api.get(`/suppliers/${id}/report`)
             .then(res => setReport(res.data))
             .catch(() => setError('לא ניתן לטעון את הדוח. ייתכן שהקישור אינו תקין.'))
             .finally(() => setLoading(false));
+
+        // Restore saved credentials if any
+        try {
+            const saved = localStorage.getItem(`${MORNING_STORAGE_KEY}_${id}`);
+            if (saved) {
+                const { token, apiId } = JSON.parse(saved);
+                if (token) { setMorningToken(token); setMorningCreds(prev => ({ ...prev, apiId: apiId || '' })); }
+            }
+        } catch {}
     }, [id]);
 
     const getCurrencySymbol = (currency) => {
@@ -27,6 +47,44 @@ export default function SupplierReport() {
     const methodLabel = (method) => {
         const map = { Cash: 'מזומן', Bit: 'ביט', Paybox: 'פייבוקס', 'Bank Transfer': 'העברה בנקאית', Check: "צ'ק", Loan: 'הלוואה' };
         return map[method] || method;
+    };
+
+    const handleMorningConnect = async (e) => {
+        e.preventDefault();
+        setMorningConnecting(true);
+        setMorningError('');
+        try {
+            const res = await api.post('/morning/token', { apiId: morningCreds.apiId, apiSecret: morningCreds.apiSecret });
+            const token = res.data.token;
+            setMorningToken(token);
+            setShowMorningForm(false);
+            localStorage.setItem(`${MORNING_STORAGE_KEY}_${id}`, JSON.stringify({ token, apiId: morningCreds.apiId }));
+        } catch (err) {
+            setMorningError(err.response?.data?.message || 'שגיאה בהתחברות');
+        } finally {
+            setMorningConnecting(false);
+        }
+    };
+
+    const handleCreateInvoice = async (ev) => {
+        if (!morningToken) return;
+        setInvoiceLoading(prev => ({ ...prev, [ev._id]: true }));
+        try {
+            const res = await api.post('/morning/create-invoice', {
+                token: morningToken,
+                eventTitle: ev.title,
+                eventDate: ev.date,
+                amount: Math.round(ev.expectedPay),
+                clientName: report?.supplier?.name || 'לקוח',
+                description: `שירותי נגינה - ${ev.title}`,
+            });
+            setInvoiceResults(prev => ({ ...prev, [ev._id]: { success: true, url: res.data.url } }));
+        } catch (err) {
+            const msg = err.response?.data?.message || 'שגיאה בהפקת החשבונית';
+            setInvoiceResults(prev => ({ ...prev, [ev._id]: { success: false, error: msg } }));
+        } finally {
+            setInvoiceLoading(prev => ({ ...prev, [ev._id]: false }));
+        }
     };
 
     if (loading) return (
@@ -62,6 +120,82 @@ export default function SupplierReport() {
                     <p className="text-slate-400 mt-1">{supplier.role}</p>
                     {supplier.contact_info && <p className="text-slate-500 text-sm mt-1">{supplier.contact_info}</p>}
                     <p className="text-xs text-slate-600 mt-3">דוח יוצר ע"י Kaslot • {new Date().toLocaleDateString('he-IL')}</p>
+                </div>
+
+                {/* Morning API Section */}
+                <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+                    <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <FiFileText className="text-green-400" size={18} />
+                            <h2 className="font-bold text-slate-100">חשבונית ירוקה / Morning API</h2>
+                        </div>
+                        {morningToken ? (
+                            <div className="flex items-center gap-2">
+                                <span className="flex items-center gap-1 text-emerald-400 text-xs font-medium">
+                                    <FiCheckCircle size={14} /> מחובר
+                                </span>
+                                <button
+                                    onClick={() => { setMorningToken(null); localStorage.removeItem(`${MORNING_STORAGE_KEY}_${id}`); }}
+                                    className="text-xs text-slate-500 hover:text-red-400 transition"
+                                >
+                                    התנתק
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setShowMorningForm(v => !v)}
+                                className="flex items-center gap-1.5 text-xs bg-green-500/15 hover:bg-green-500/25 text-green-400 border border-green-500/30 px-3 py-1.5 rounded-lg transition"
+                            >
+                                <FiKey size={12} /> חבר API
+                            </button>
+                        )}
+                    </div>
+
+                    {showMorningForm && !morningToken && (
+                        <form onSubmit={handleMorningConnect} className="p-4 space-y-3 border-b border-slate-700">
+                            <p className="text-xs text-slate-400">הזן את מפתחות ה-API שלך מ-Morning (חשבונית ירוקה) להפקת חשבוניות אוטומטית.</p>
+                            {morningError && (
+                                <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-2 rounded-lg text-xs flex items-center gap-2">
+                                    <FiAlertCircle size={12} /> {morningError}
+                                </div>
+                            )}
+                            <div className="grid grid-cols-1 gap-2">
+                                <input
+                                    required
+                                    type="text"
+                                    placeholder="API ID"
+                                    value={morningCreds.apiId}
+                                    onChange={e => setMorningCreds(p => ({ ...p, apiId: e.target.value }))}
+                                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-green-500"
+                                />
+                                <input
+                                    required
+                                    type="password"
+                                    placeholder="API Secret"
+                                    value={morningCreds.apiSecret}
+                                    onChange={e => setMorningCreds(p => ({ ...p, apiSecret: e.target.value }))}
+                                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-green-500"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    type="submit"
+                                    disabled={morningConnecting}
+                                    className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-medium transition disabled:opacity-60"
+                                >
+                                    {morningConnecting ? 'מתחבר...' : 'התחבר'}
+                                </button>
+                                <button type="button" onClick={() => setShowMorningForm(false)} className="px-3 py-2 text-slate-400 hover:text-slate-200 transition">
+                                    <FiX size={16} />
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-slate-600">המפתחות נשמרים רק בדפדפן שלך ואינם נשלחים לשרת אחסון.</p>
+                        </form>
+                    )}
+
+                    {!morningToken && !showMorningForm && (
+                        <p className="p-4 text-xs text-slate-500">חבר את ה-API של Morning כדי להפיק חשבוניות ישירות מדף זה לכל אירוע.</p>
+                    )}
                 </div>
 
                 {/* Balance Summary */}
@@ -162,6 +296,43 @@ export default function SupplierReport() {
                                                 <div className="text-[10px] text-slate-500">שכר לאירוע</div>
                                             </div>
                                         </div>
+
+                                        {/* Morning Invoice Button */}
+                                        {morningToken && (
+                                            <div className="mt-3">
+                                                {invoiceResults[ev._id] ? (
+                                                    invoiceResults[ev._id].success ? (
+                                                        <div className="flex items-center gap-2 text-emerald-400 text-xs bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+                                                            <FiCheckCircle size={13} />
+                                                            <span className="font-medium">חשבונית הופקה!</span>
+                                                            {invoiceResults[ev._id].url && (
+                                                                <a href={invoiceResults[ev._id].url} target="_blank" rel="noreferrer"
+                                                                   className="flex items-center gap-1 text-emerald-300 hover:underline mr-auto">
+                                                                    <FiExternalLink size={11} /> פתח
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2 text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                                                            <FiAlertCircle size={13} />
+                                                            <span>{invoiceResults[ev._id].error}</span>
+                                                            <button onClick={() => setInvoiceResults(p => { const n = {...p}; delete n[ev._id]; return n; })} className="mr-auto text-slate-400 hover:text-white">
+                                                                <FiX size={12} />
+                                                            </button>
+                                                        </div>
+                                                    )
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleCreateInvoice(ev)}
+                                                        disabled={invoiceLoading[ev._id]}
+                                                        className="flex items-center gap-1.5 text-xs bg-green-600/15 hover:bg-green-600/25 text-green-400 border border-green-500/30 px-3 py-1.5 rounded-lg transition disabled:opacity-60"
+                                                    >
+                                                        <FiFileText size={12} />
+                                                        {invoiceLoading[ev._id] ? 'מפיק...' : 'הפק חשבונית'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
