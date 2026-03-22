@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import api from '../api';
 import {
   FiPlus, FiTrash2, FiEdit2, FiDollarSign, FiCalendar,
-  FiTrendingDown, FiTrendingUp, FiAlertCircle, FiCheckCircle,
-  FiX, FiSave, FiSearch, FiLink
+  FiTrendingDown, FiAlertCircle, FiCheckCircle,
+  FiX, FiSave, FiSearch, FiLink, FiCamera, FiImage,
+  FiExternalLink, FiUser
 } from 'react-icons/fi';
 
 const PAYMENT_METHODS = [
@@ -21,6 +22,45 @@ const MONTHS_HE = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי
 
 function todayStr() {
   return new Date().toISOString().split('T')[0];
+}
+
+// Compress image using Canvas, returns { base64, mimeType }
+async function compressImage(file, maxWidth = 1024, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const mimeType = 'image/jpeg';
+        canvas.toBlob(
+          (blob) => {
+            const fr = new FileReader();
+            fr.onload = () => {
+              const base64 = fr.result.split(',')[1];
+              resolve({ base64, mimeType });
+            };
+            fr.readAsDataURL(blob);
+          },
+          mimeType,
+          quality
+        );
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function BudgetExpenses() {
@@ -47,9 +87,20 @@ export default function BudgetExpenses() {
     description: '',
     linkedSupplierId: '',
     linkedPartnerId: '',
+    receiptRecipientPartnerId: '',
+    // image data
+    receiptImage: null,       // base64 string
+    receiptImageMime: null,   // mime type
+    receiptPreview: null,     // data URL for preview
+    existingReceiptUrl: null, // URL of existing receipt (from DB)
+    removeReceipt: false,     // flag to remove existing receipt
   });
   const [expenseError, setExpenseError] = useState('');
   const [expenseSaving, setExpenseSaving] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Image viewer modal
+  const [viewImageUrl, setViewImageUrl] = useState(null);
 
   // Supplier/Partner search for linking
   const [suppliers, setSuppliers] = useState([]);
@@ -132,7 +183,13 @@ export default function BudgetExpenses() {
   // ---- Expense handlers ----
   const openNewExpense = () => {
     setExpenseEditId(null);
-    setExpenseForm({ amount: '', method: 'Cash', installments: 1, date: todayStr(), description: '', linkedSupplierId: '', linkedPartnerId: '' });
+    setExpenseForm({
+      amount: '', method: 'Cash', installments: 1, date: todayStr(),
+      description: '', linkedSupplierId: '', linkedPartnerId: '',
+      receiptRecipientPartnerId: '',
+      receiptImage: null, receiptImageMime: null, receiptPreview: null,
+      existingReceiptUrl: null, removeReceipt: false,
+    });
     setExpenseError('');
     setLinkSearch('');
     setLinkDropdownOpen(false);
@@ -149,11 +206,35 @@ export default function BudgetExpenses() {
       description: exp.description,
       linkedSupplierId: exp.linkedSupplierId?._id || exp.linkedSupplierId || '',
       linkedPartnerId: exp.linkedPartnerId?._id || exp.linkedPartnerId || '',
+      receiptRecipientPartnerId: exp.receiptRecipientPartnerId?._id || exp.receiptRecipientPartnerId || '',
+      receiptImage: null,
+      receiptImageMime: null,
+      receiptPreview: null,
+      existingReceiptUrl: exp.receiptImageUrl || null,
+      removeReceipt: false,
     });
     setExpenseError('');
     setLinkSearch('');
     setLinkDropdownOpen(false);
     setExpenseModalOpen(true);
+  };
+
+  const handleImageSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const { base64, mimeType } = await compressImage(file);
+      setExpenseForm(prev => ({
+        ...prev,
+        receiptImage: base64,
+        receiptImageMime: mimeType,
+        receiptPreview: `data:${mimeType};base64,${base64}`,
+        existingReceiptUrl: null,
+        removeReceipt: false,
+      }));
+    } catch (err) {
+      console.error('Image compression error:', err);
+    }
   };
 
   const handleExpenseSave = async (e) => {
@@ -169,7 +250,13 @@ export default function BudgetExpenses() {
         description: expenseForm.description,
         linkedSupplierId: expenseForm.linkedSupplierId || null,
         linkedPartnerId: expenseForm.linkedPartnerId || null,
+        receiptRecipientPartnerId: expenseForm.receiptRecipientPartnerId || null,
+        receiptImage: expenseForm.receiptImage || (expenseForm.removeReceipt ? null : undefined),
+        receiptImageMime: expenseForm.receiptImageMime || undefined,
       };
+      // Remove undefined keys
+      Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+
       if (expenseEditId) {
         await api.put(`/budget/expenses/${expenseEditId}`, payload);
       } else {
@@ -246,6 +333,17 @@ export default function BudgetExpenses() {
   const expenses = summary?.expenses || [];
 
   const isDeficit = balance < 0;
+
+  const getReceiptRecipientName = (exp) => {
+    if (exp.receiptRecipientPartnerId && typeof exp.receiptRecipientPartnerId === 'object') {
+      return exp.receiptRecipientPartnerId.name;
+    }
+    if (exp.receiptRecipientPartnerId) {
+      const p = partners.find(p => p._id === exp.receiptRecipientPartnerId);
+      return p?.name || null;
+    }
+    return null;
+  };
 
   if (loading) return (
     <div className="space-y-6">
@@ -465,20 +563,35 @@ export default function BudgetExpenses() {
             <div className="hidden md:grid grid-cols-12 gap-2 px-5 py-2 text-xs text-slate-500 font-medium bg-slate-900/30">
               <span className="col-span-1">תאריך</span>
               <span className="col-span-3">פירוט</span>
-              <span className="col-span-2">מקושר לספק/שותף</span>
-              <span className="col-span-2">אמצעי תשלום</span>
-              <span className="col-span-1 text-center">תשלומים</span>
-              <span className="col-span-2 text-left">סכום</span>
+              <span className="col-span-2">מקושר</span>
+              <span className="col-span-2">חשבונית ל</span>
+              <span className="col-span-1">אמצעי</span>
+              <span className="col-span-1 text-center">תשל׳</span>
+              <span className="col-span-1 text-left">סכום</span>
               <span className="col-span-1"></span>
             </div>
             {expenses.map(exp => {
               const linkedName = getLinkedEntityName(exp);
+              const recipientName = getReceiptRecipientName(exp);
+              const hasReceipt = !!exp.receiptImageUrl;
+              const hasDrive = !!exp.receiptDriveFileId;
               return (
                 <div key={exp._id} className="px-5 py-4 hover:bg-slate-700/20 transition grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
                   {/* Mobile layout */}
                   <div className="md:hidden flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-slate-100 mb-0.5">{exp.description}</p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="font-medium text-slate-100">{exp.description}</p>
+                        {hasReceipt && (
+                          <button
+                            onClick={() => setViewImageUrl(exp.receiptImageUrl)}
+                            className="p-1 text-violet-400 hover:text-violet-300 transition"
+                            title="הצג חשבונית"
+                          >
+                            <FiImage size={14} />
+                          </button>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-500">
                         {new Date(exp.date).toLocaleDateString('he-IL')} •{' '}
                         {methodLabel(exp.method)}{' '}
@@ -489,8 +602,19 @@ export default function BudgetExpenses() {
                           <FiLink size={10} /> {linkedName}
                         </p>
                       )}
+                      {recipientName && (
+                        <p className="text-xs text-violet-400 mt-0.5 flex items-center gap-1">
+                          <FiUser size={10} /> חשבונית ל: {recipientName}
+                        </p>
+                      )}
+                      {hasDrive && (
+                        <a href={exp.receiptImageUrl} target="_blank" rel="noreferrer"
+                           className="text-xs text-emerald-400 mt-0.5 flex items-center gap-1 hover:underline">
+                          <FiExternalLink size={10} /> בדרייב
+                        </a>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 mr-2">
                       <span className="text-red-400 font-bold text-lg">₪{exp.amount.toLocaleString()}</span>
                       <button onClick={() => openEditExpense(exp)} className="p-1.5 text-slate-400 hover:text-blue-400 rounded-lg transition">
                         <FiEdit2 size={14} />
@@ -504,7 +628,20 @@ export default function BudgetExpenses() {
                   <span className="hidden md:block col-span-1 text-xs text-slate-500">
                     {new Date(exp.date).toLocaleDateString('he-IL')}
                   </span>
-                  <span className="hidden md:block col-span-3 text-sm text-slate-200 font-medium">{exp.description}</span>
+                  <div className="hidden md:flex col-span-3 items-center gap-2">
+                    <span className="text-sm text-slate-200 font-medium">{exp.description}</span>
+                    {hasReceipt && (
+                      <button
+                        onClick={() => setViewImageUrl(exp.receiptImageUrl)}
+                        className="p-1 text-violet-400 hover:text-violet-300 flex-shrink-0 transition"
+                        title="הצג חשבונית"
+                      >
+                        {hasDrive
+                          ? <FiExternalLink size={13} />
+                          : <FiImage size={13} />}
+                      </button>
+                    )}
+                  </div>
                   <span className="hidden md:block col-span-2 text-xs">
                     {linkedName ? (
                       <span className="flex items-center gap-1 text-cyan-400">
@@ -514,11 +651,20 @@ export default function BudgetExpenses() {
                       <span className="text-slate-600">—</span>
                     )}
                   </span>
-                  <span className="hidden md:block col-span-2 text-xs text-slate-400">{methodLabel(exp.method)}</span>
-                  <span className="hidden md:block col-span-1 text-xs text-slate-400 text-center">
-                    {exp.installments > 1 ? `${exp.installments} תשלומים` : 'חד-פעמי'}
+                  <span className="hidden md:block col-span-2 text-xs">
+                    {recipientName ? (
+                      <span className="flex items-center gap-1 text-violet-400">
+                        <FiUser size={11} /> {recipientName}
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
                   </span>
-                  <span className="hidden md:block col-span-2 text-sm font-bold text-red-400">
+                  <span className="hidden md:block col-span-1 text-xs text-slate-400">{methodLabel(exp.method)}</span>
+                  <span className="hidden md:block col-span-1 text-xs text-slate-400 text-center">
+                    {exp.installments > 1 ? `${exp.installments}` : '1'}
+                  </span>
+                  <span className="hidden md:block col-span-1 text-sm font-bold text-red-400">
                     ₪{exp.amount.toLocaleString()}
                   </span>
                   <div className="hidden md:flex col-span-1 items-center justify-end gap-1">
@@ -582,7 +728,6 @@ export default function BudgetExpenses() {
             </div>
           </div>
 
-          {/* Visual progress bar */}
           {budgetAmount > 0 && (
             <div>
               <div className="flex justify-between text-xs text-slate-500 mb-1">
@@ -603,10 +748,38 @@ export default function BudgetExpenses() {
         </div>
       )}
 
+      {/* ===== IMAGE VIEWER MODAL ===== */}
+      {viewImageUrl && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+          onClick={() => setViewImageUrl(null)}
+        >
+          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setViewImageUrl(null)}
+              className="absolute -top-10 left-0 text-white hover:text-red-400 transition text-lg"
+            >
+              <FiX size={28} />
+            </button>
+            {viewImageUrl.startsWith('https://drive.google.com') ? (
+              <div className="text-center">
+                <img src={viewImageUrl} alt="חשבונית" className="max-h-[80vh] mx-auto rounded-xl shadow-2xl" />
+                <a href={viewImageUrl} target="_blank" rel="noreferrer"
+                   className="mt-4 inline-flex items-center gap-2 text-emerald-400 hover:underline text-sm">
+                  <FiExternalLink size={14} /> פתח בגוגל דרייב
+                </a>
+              </div>
+            ) : (
+              <img src={viewImageUrl} alt="חשבונית" className="max-h-[80vh] mx-auto rounded-xl shadow-2xl" />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ===== EXPENSE MODAL ===== */}
       {expenseModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-lg border border-slate-700 shadow-2xl max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-xl font-bold text-slate-100">
                 {expenseEditId ? 'עריכת הוצאה' : 'הוצאה חדשה'}
@@ -696,6 +869,24 @@ export default function BudgetExpenses() {
                 )}
               </div>
 
+              {/* Receipt recipient partner */}
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-1">
+                  <FiUser size={13} className="inline ml-1" />
+                  חשבונית על שם שותף (לא חובה)
+                </label>
+                <select
+                  value={expenseForm.receiptRecipientPartnerId}
+                  onChange={e => setExpenseForm({ ...expenseForm, receiptRecipientPartnerId: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 focus:outline-none focus:border-violet-500 transition text-sm"
+                >
+                  <option value="">— לא שויך לשותף —</option>
+                  {partners.map(p => (
+                    <option key={p._id} value={p._id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">סכום (₪)</label>
@@ -746,6 +937,76 @@ export default function BudgetExpenses() {
                     placeholder="1"
                   />
                 </div>
+              </div>
+
+              {/* Receipt image upload */}
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">
+                  <FiCamera size={13} className="inline ml-1" />
+                  תמונת חשבונית (לא חובה)
+                </label>
+
+                {/* Existing receipt or preview */}
+                {(expenseForm.receiptPreview || (expenseForm.existingReceiptUrl && !expenseForm.removeReceipt)) && (
+                  <div className="relative mb-2 inline-block">
+                    <img
+                      src={expenseForm.receiptPreview || expenseForm.existingReceiptUrl}
+                      alt="תצוגה מקדימה"
+                      className="h-28 rounded-xl border border-slate-600 object-cover shadow cursor-pointer"
+                      onClick={() => setViewImageUrl(expenseForm.receiptPreview || expenseForm.existingReceiptUrl)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setExpenseForm(prev => ({
+                        ...prev,
+                        receiptPreview: null,
+                        receiptImage: null,
+                        receiptImageMime: null,
+                        existingReceiptUrl: null,
+                        removeReceipt: true,
+                      }))}
+                      className="absolute -top-2 -left-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition shadow-lg"
+                    >
+                      <FiX size={12} />
+                    </button>
+                    {expenseForm.existingReceiptUrl && !expenseForm.receiptPreview && expenseForm.existingReceiptUrl.includes('drive') && (
+                      <span className="absolute bottom-1 right-1 bg-emerald-500/90 text-white text-[9px] px-1.5 py-0.5 rounded font-bold">
+                        Drive ✓
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Upload button */}
+                {!expenseForm.receiptPreview && !(expenseForm.existingReceiptUrl && !expenseForm.removeReceipt) && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 w-full justify-center border-2 border-dashed border-slate-600 hover:border-violet-500 text-slate-400 hover:text-violet-400 rounded-xl px-4 py-3 transition"
+                  >
+                    <FiCamera size={18} />
+                    <span className="text-sm">לחץ להעלאת תמונת חשבונית</span>
+                  </button>
+                )}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
+
+                {expenseForm.receiptImage && (
+                  <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
+                    <FiCheckCircle size={11} />
+                    תמונה נדחסה ומוכנה להעלאה
+                    {' '}(~{Math.round(expenseForm.receiptImage.length * 0.75 / 1024)}KB)
+                  </p>
+                )}
+                <p className="text-xs text-slate-600 mt-1">
+                  התמונה תידחס אוטומטית. אם חשבון Google מחובר, תועלה לדרייב.
+                </p>
               </div>
 
               <div className="flex justify-end gap-3 pt-2">

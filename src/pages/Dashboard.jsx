@@ -138,7 +138,7 @@ export default function Dashboard() {
                         color="bg-blue-400"
                     />
                     <StatCard
-                        title="רווח נוכחי"
+                        title="רווח קופה"
                         /* value={`₪${summary.totalProfit.Shekel.toLocaleString()} | $${summary.totalProfit.Dollar.toLocaleString()} | €${summary.totalProfit.Euro.toLocaleString()}`} */
                         value={`₪${summary.totalProfit.Shekel.toLocaleString()}`}
                         icon={<FiTrendingUp size={24} className="text-emerald-400" />}
