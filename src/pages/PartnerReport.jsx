@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
-import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiDollarSign, FiLink, FiPhone, FiUsers, FiFileText, FiKey, FiCheckCircle, FiAlertCircle, FiX, FiExternalLink } from 'react-icons/fi';
+import { FiCalendar, FiMapPin, FiPieChart, FiCreditCard, FiDollarSign, FiLink, FiPhone, FiUsers, FiFileText, FiKey, FiCheckCircle, FiAlertCircle, FiX, FiExternalLink, FiEdit2 } from 'react-icons/fi';
 
 const MORNING_STORAGE_KEY = 'morning_api_creds';
 
@@ -19,6 +19,7 @@ export default function PartnerReport() {
     const [showMorningForm, setShowMorningForm] = useState(false);
     const [invoiceLoading, setInvoiceLoading] = useState({});
     const [invoiceResults, setInvoiceResults] = useState({});
+    const [editingInvoice, setEditingInvoice] = useState(null); // { evId, date, description }
 
     useEffect(() => {
         api.get(`/partners/${id}/report`)
@@ -65,24 +66,25 @@ export default function PartnerReport() {
         }
     };
 
-    const handleCreateInvoice = async (ev) => {
+    const handleCreateInvoice = async (evId, customDate, customDescription, amount) => {
         if (!morningToken || !report) return;
-        setInvoiceLoading(prev => ({ ...prev, [ev._id]: true }));
+        setInvoiceLoading(prev => ({ ...prev, [evId]: true }));
+        setEditingInvoice(null);
         try {
             const res = await api.post('/morning/create-invoice', {
                 token: morningToken,
-                eventTitle: ev.title,
-                eventDate: ev.date,
-                amount: Math.round(ev.expectedPay),
+                eventTitle: customDescription,
+                eventDate: customDate,
+                amount: Math.round(amount),
                 clientName: report.partner?.name || 'לקוח',
-                description: `שירותי נגינה - ${ev.title}`,
+                description: customDescription,
             });
-            setInvoiceResults(prev => ({ ...prev, [ev._id]: { success: true, url: res.data.url } }));
+            setInvoiceResults(prev => ({ ...prev, [evId]: { success: true, url: res.data.url } }));
         } catch (err) {
             const msg = err.response?.data?.message || 'שגיאה בהפקת החשבונית';
-            setInvoiceResults(prev => ({ ...prev, [ev._id]: { success: false, error: msg } }));
+            setInvoiceResults(prev => ({ ...prev, [evId]: { success: false, error: msg } }));
         } finally {
-            setInvoiceLoading(prev => ({ ...prev, [ev._id]: false }));
+            setInvoiceLoading(prev => ({ ...prev, [evId]: false }));
         }
     };
 
@@ -399,9 +401,53 @@ export default function PartnerReport() {
                                                             </button>
                                                         </div>
                                                     )
+                                                ) : editingInvoice?.evId === ev._id ? (
+                                                    <div className="bg-slate-900/70 border border-green-500/30 rounded-xl p-3 space-y-2">
+                                                        <p className="text-xs text-slate-400 font-medium flex items-center gap-1"><FiEdit2 size={11} /> עריכת פרטי חשבונית</p>
+                                                        <div className="space-y-2">
+                                                            <div>
+                                                                <label className="text-[10px] text-slate-500 block mb-1">תיאור</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={editingInvoice.description}
+                                                                    onChange={e => setEditingInvoice(p => ({ ...p, description: e.target.value }))}
+                                                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-green-500"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] text-slate-500 block mb-1">תאריך</label>
+                                                                <input
+                                                                    type="date"
+                                                                    value={editingInvoice.date}
+                                                                    onChange={e => setEditingInvoice(p => ({ ...p, date: e.target.value }))}
+                                                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-green-500"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-2 pt-1">
+                                                            <button
+                                                                onClick={() => handleCreateInvoice(ev._id, editingInvoice.date, editingInvoice.description, ev.expectedPay)}
+                                                                disabled={invoiceLoading[ev._id]}
+                                                                className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition disabled:opacity-60"
+                                                            >
+                                                                <FiFileText size={12} />
+                                                                {invoiceLoading[ev._id] ? 'מפיק...' : 'הפק חשבונית'}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setEditingInvoice(null)}
+                                                                className="px-3 py-1.5 text-xs text-slate-400 hover:text-white border border-slate-700 rounded-lg transition"
+                                                            >
+                                                                <FiX size={12} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 ) : (
                                                     <button
-                                                        onClick={() => handleCreateInvoice(ev)}
+                                                        onClick={() => setEditingInvoice({
+                                                            evId: ev._id,
+                                                            date: new Date(ev.date).toISOString().split('T')[0],
+                                                            description: `שירותי נגינה - ${ev.title}`,
+                                                        })}
                                                         disabled={invoiceLoading[ev._id]}
                                                         className="flex items-center gap-1.5 text-xs bg-green-600/15 hover:bg-green-600/25 text-green-400 border border-green-500/30 px-3 py-1.5 rounded-lg transition disabled:opacity-60"
                                                     >
