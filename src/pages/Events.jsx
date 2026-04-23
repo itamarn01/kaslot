@@ -64,7 +64,7 @@ export default function Events() {
     const [isEditEventMode, setIsEditEventMode] = useState(false);
     const [isEditSupplierMode, setIsEditSupplierMode] = useState(false);
 
-    const [eventForm, setEventForm] = useState({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel', eventType: 'חתונה' });
+    const [eventForm, setEventForm] = useState({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel', eventType: 'חתונה', customPartners: false, participatingPartners: [] });
     const [currentEventId, setCurrentEventId] = useState(null);
 
     const [supplierForm, setSupplierForm] = useState({ supplierIds: [], expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
@@ -230,12 +230,14 @@ export default function Events() {
                 phone_number: ev.phone_number || '',
                 totalPrice: ev.totalPrice,
                 currency: ev.currency || 'Shekel',
-                eventType: ev.eventType || 'חתונה'
+                eventType: ev.eventType || 'חתונה',
+                customPartners: ev.customPartners || false,
+                participatingPartners: ev.participatingPartners || []
             });
         } else {
             setIsEditEventMode(false);
             setCurrentEventId(null);
-            setEventForm({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel', eventType: 'חתונה' });
+            setEventForm({ title: '', date: '', location: '', phone_number: '', totalPrice: '', currency: 'Shekel', eventType: 'חתונה', customPartners: false, participatingPartners: [] });
         }
         setIsEventModalOpen(true);
     };
@@ -748,8 +750,19 @@ export default function Events() {
                                                         <h4 className="font-bold text-violet-300 mb-3">💰 רווחי שותפים באירוע:</h4>
                                                         <div className="space-y-2">
                                                             {partners.map(partner => {
-                                                                // Calculate profit share using non-substitute costs only
-                                                                const profitShare = eventProfitForPartners * (partner.percentage / 100);
+                                                                // Calculate relative percentage if custom partners is enabled
+                                                                let effectivePercentage = partner.percentage;
+                                                                if (ev.customPartners) {
+                                                                    const participatingPartnerIds = ev.participatingPartners || [];
+                                                                    if (!participatingPartnerIds.includes(partner._id)) {
+                                                                        effectivePercentage = 0;
+                                                                    } else {
+                                                                        const activePartners = partners.filter(p => participatingPartnerIds.includes(p._id));
+                                                                        const totalActivePercentage = activePartners.reduce((sum, p) => sum + p.percentage, 0);
+                                                                        effectivePercentage = totalActivePercentage > 0 ? (partner.percentage / totalActivePercentage) * 100 : 0;
+                                                                    }
+                                                                }
+                                                                const profitShare = eventProfitForPartners * (effectivePercentage / 100);
                                                                 // Check if partner is linked to a supplier in this event (non-substitute only)
                                                                 let supplierPay = 0;
                                                                 const linkedIds = partner.linkedSupplierIds ? partner.linkedSupplierIds.map(s => s._id || s) : [];
@@ -770,7 +783,9 @@ export default function Events() {
                                                                 return (
                                                                     <div key={partner._id} className="bg-slate-800 p-3 rounded-xl border border-violet-500/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="text-violet-400 font-bold text-sm">{partner.percentage}%</span>
+                                                                            <span className="text-violet-400 font-bold text-sm">
+                                                                                {ev.customPartners ? `${Math.round(effectivePercentage * 10) / 10}%` : `${partner.percentage}%`}
+                                                                            </span>
                                                                             <span className="font-medium text-slate-100">{partner.name}</span>
                                                                         </div>
                                                                         <div className="flex flex-wrap gap-3 text-sm">
@@ -837,6 +852,58 @@ export default function Events() {
                                 <label className="block text-sm font-medium text-slate-400 mb-1">טלפון של בעל אירוע</label>
                                 <input type="text" value={eventForm.phone_number} onChange={e => setEventForm({ ...eventForm, phone_number: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500" />
                             </div>
+                            {partners.length > 0 && (
+                                <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                        <div className="relative">
+                                            <input
+                                                type="checkbox"
+                                                checked={eventForm.customPartners}
+                                                onChange={e => {
+                                                    const isChecked = e.target.checked;
+                                                    setEventForm({
+                                                        ...eventForm,
+                                                        customPartners: isChecked,
+                                                        participatingPartners: isChecked ? partners.map(p => p._id) : []
+                                                    });
+                                                }}
+                                                className="sr-only peer"
+                                            />
+                                            <div className="w-10 h-5 bg-slate-700 rounded-full peer peer-checked:bg-violet-500 transition-colors"></div>
+                                            <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-white rounded-full peer-checked:-translate-x-5 transition-transform"></div>
+                                        </div>
+                                        <div>
+                                            <span className="text-sm font-medium text-slate-200">חלוקת רווחים מותאמת אישית</span>
+                                            <p className="text-xs text-slate-500">בחר אילו שותפים משתתפים ברווחי אירוע זה (החלוקה תחושב יחסית)</p>
+                                        </div>
+                                    </label>
+                                    
+                                    {eventForm.customPartners && (
+                                        <div className="mt-4 grid grid-cols-2 gap-2">
+                                            {partners.map(p => {
+                                                const isParticipating = eventForm.participatingPartners.includes(p._id);
+                                                return (
+                                                    <label key={p._id} className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition ${isParticipating ? 'bg-violet-500/20 border-violet-500/40' : 'bg-slate-800 border-slate-700'}`}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isParticipating}
+                                                            onChange={e => {
+                                                                if (e.target.checked) {
+                                                                    setEventForm(prev => ({ ...prev, participatingPartners: [...prev.participatingPartners, p._id] }));
+                                                                } else {
+                                                                    setEventForm(prev => ({ ...prev, participatingPartners: prev.participatingPartners.filter(id => id !== p._id) }));
+                                                                }
+                                                            }}
+                                                            className="w-4 h-4 text-violet-500 bg-slate-900 border-slate-700 rounded focus:ring-violet-500 focus:ring-offset-slate-800"
+                                                        />
+                                                        <span className="text-sm text-slate-200">{p.name} ({p.percentage}%)</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">מחיר סגירה (ללהקה)</label>
