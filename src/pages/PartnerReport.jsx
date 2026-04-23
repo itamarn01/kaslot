@@ -343,7 +343,7 @@ export default function PartnerReport() {
 
                                         <div className="bg-slate-900/50 rounded-xl p-3 mt-3 space-y-2 text-sm border border-slate-700/50 shadow-inner">
                                             <div className="flex justify-between items-center">
-                                                <span className="text-slate-400 text-xs">רווח כשותף ({partner.percentage}%):</span>
+                                                <span className="text-slate-400 text-xs">רווח כשותף ({ev.isCustom ? `${Math.round(ev.effectivePercentage * 10) / 10}%` : `${partner.percentage}%`}):</span>
                                                 <span className="text-violet-400 font-bold">{getCurrencySymbol(ev.currency)}{Math.round(ev.partnerShare).toLocaleString()}</span>
                                             </div>
                                             {ev.supplierEarnings > 0 && (
