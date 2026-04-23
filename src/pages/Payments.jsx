@@ -93,14 +93,15 @@ export default function Payments() {
             });
 
             // Band expenses linked to this supplier
+            const sId = s._id.toString();
             const linkedExpenses = bandExpenses.filter(e =>
-                (e.linkedSupplierId?._id || e.linkedSupplierId) === s._id
+                (e.linkedSupplierId?._id || e.linkedSupplierId)?.toString() === sId
             );
             const totalBandExpense = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
             const totalPaid = { Shekel: 0, Dollar: 0, Euro: 0 };
             const totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 };
-            const entityPayments = payments.filter(p => p.supplierId?._id === s._id || p.supplierId === s._id);
+            const entityPayments = payments.filter(pay => (pay.supplierId?._id || pay.supplierId)?.toString() === sId);
             entityPayments.forEach(p => {
                 const cur = p.currency || 'Shekel';
                 if (p.direction === 'debt') {
@@ -136,7 +137,7 @@ export default function Payments() {
     // Build per-partner balance
     const partnerBalances = partners.map(p => {
         const totalExpected = { Shekel: 0, Dollar: 0, Euro: 0 };
-        const linkedIds = p.linkedSupplierIds ? p.linkedSupplierIds.map(s => s._id || s) : [];
+        const linkedIds = p.linkedSupplierIds ? p.linkedSupplierIds.map(s => (s._id || s).toString()) : [];
 
         events.forEach(ev => {
             const evCurrency = ev.currency || 'Shekel';
@@ -144,16 +145,33 @@ export default function Payments() {
                 .filter(part => !part.isSubstitute && (part.currency || 'Shekel') === evCurrency)
                 .reduce((sum, part) => sum + (part.expectedPay || 0), 0);
             const eventProfit = (ev.totalPrice || 0) - eventSupplierCosts;
-            const partnerShare = eventProfit * (p.percentage / 100);
+            let effectivePercentage = p.percentage;
+            if (ev.customPartners) {
+                const participatingPartnerIds = ev.participatingPartners || [];
+                const pId = p._id.toString();
+                if (!participatingPartnerIds.some(id => (id._id || id).toString() === pId)) {
+                    effectivePercentage = 0;
+                } else {
+                    const activePartners = partners.filter(part =>
+                        participatingPartnerIds.some(id => (id._id || id).toString() === part._id.toString())
+                    );
+                    const totalActivePercentage = activePartners.reduce((sum, part) => sum + part.percentage, 0);
+                    effectivePercentage = totalActivePercentage > 0 ? (p.percentage / totalActivePercentage) * 100 : 0;
+                }
+            }
+
+            const partnerShare = eventProfit * (effectivePercentage / 100);
             if (partnerShare > 0) totalExpected[evCurrency] += partnerShare;
 
             ev.participants?.forEach(part => {
-                if (!part.isSubstitute && linkedIds.includes(part.supplierId?._id || part.supplierId)) {
+                const sId = (part.supplierId?._id || part.supplierId)?.toString();
+                if (!part.isSubstitute && sId && linkedIds.includes(sId)) {
                     totalExpected[part.currency || 'Shekel'] += part.expectedPay || 0;
                 }
             });
             ev.participants?.forEach(part => {
-                if (part.isSubstitute && part.replacesPartnerId && (part.replacesPartnerId === p._id || part.replacesPartnerId._id === p._id)) {
+                const rId = (part.replacesPartnerId?._id || part.replacesPartnerId)?.toString();
+                if (part.isSubstitute && rId && rId === p._id.toString()) {
                     totalExpected[part.currency || 'Shekel'] -= part.expectedPay || 0;
                 }
             });
@@ -161,8 +179,10 @@ export default function Payments() {
 
         // Band expenses linked to this partner or its linked suppliers
         const linkedExpenses = bandExpenses.filter(e => {
-            if ((e.linkedPartnerId?._id || e.linkedPartnerId) === p._id) return true;
-            if (e.linkedSupplierId && linkedIds.includes(e.linkedSupplierId?._id || e.linkedSupplierId)) return true;
+            const ePartnerId = (e.linkedPartnerId?._id || e.linkedPartnerId)?.toString();
+            const eSupplierId = (e.linkedSupplierId?._id || e.linkedSupplierId)?.toString();
+            if (ePartnerId === p._id.toString()) return true;
+            if (eSupplierId && linkedIds.includes(eSupplierId)) return true;
             return false;
         });
         const totalBandExpense = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -172,10 +192,11 @@ export default function Payments() {
 
         const totalPaid = { Shekel: 0, Dollar: 0, Euro: 0 };
         const totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 };
-        const entityPayments = payments.filter(pay =>
-            pay.partnerId?._id === p._id || pay.partnerId === p._id ||
-            linkedIds.includes(pay.supplierId?._id || pay.supplierId)
-        );
+        const entityPayments = payments.filter(pay => {
+            const payPId = (pay.partnerId?._id || pay.partnerId)?.toString();
+            const paySId = (pay.supplierId?._id || pay.supplierId)?.toString();
+            return payPId === p._id.toString() || (paySId && linkedIds.includes(paySId));
+        });
         entityPayments.forEach(pay => {
             const cur = pay.currency || 'Shekel';
             if (pay.direction === 'debt') {
