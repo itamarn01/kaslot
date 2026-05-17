@@ -69,6 +69,7 @@ export default function Events() {
 
     const [supplierForm, setSupplierForm] = useState({ supplierIds: [], expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
     const [currentParticipantId, setCurrentParticipantId] = useState(null);
+    const [justAddedSuppliers, setJustAddedSuppliers] = useState([]); // suppliers added in current modal session
 
     // Calendar invite state
     const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
@@ -189,6 +190,9 @@ export default function Events() {
                     replacesPartnerId: supplierForm.isSubstitute ? supplierForm.replacesPartnerId : null
                 };
                 await api.put(`/events/${currentEventId}/participants/${currentParticipantId}`, payload);
+                setIsSupplierModalOpen(false);
+                setSupplierForm({ supplierIds: [], expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
+                fetchData();
             } else {
                 // Add mode: loop over selected supplierIds
                 const ids = supplierForm.supplierIds || [];
@@ -203,10 +207,16 @@ export default function Events() {
                         replacesPartnerId: supplierForm.isSubstitute ? supplierForm.replacesPartnerId : null
                     });
                 }));
+                // Track what was just added for display in modal
+                const addedNames = ids.map(sid => {
+                    const s = suppliers.find(x => x._id === sid);
+                    return { name: s?.name || sid, pay: supplierForm.expectedPay, currency: supplierForm.currency };
+                });
+                setJustAddedSuppliers(prev => [...prev, ...addedNames]);
+                // Reset form but keep modal open for next entry
+                setSupplierForm({ supplierIds: [], expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
+                fetchData();
             }
-            setIsSupplierModalOpen(false);
-            setSupplierForm({ supplierIds: [], expectedPay: '', currency: 'Shekel', isSubstitute: false, replacesPartnerId: '' });
-            fetchData();
         } catch (err) { alert(err.response?.data?.message || 'Error adding/updating supplier'); }
     };
 
@@ -244,6 +254,7 @@ export default function Events() {
 
     const openSupplierModal = (eventId, participant = null) => {
         setCurrentEventId(eventId);
+        setJustAddedSuppliers([]);
         if (participant) {
             setIsEditSupplierMode(true);
             setCurrentParticipantId(participant.supplierId._id);
@@ -930,8 +941,35 @@ export default function Events() {
             {/* ADD / EDIT SUPPLIER MODAL */}
             {isSupplierModalOpen && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                    <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
-                        <h3 className="text-2xl font-bold mb-4">{isEditSupplierMode ? 'ערוך שכר מסוכם' : 'הוסף נגן/ספק לאירוע'}</h3>
+                    <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-2xl font-bold">{isEditSupplierMode ? 'ערוך שכר מסוכם' : 'הוסף נגן/ספק לאירוע'}</h3>
+                            {!isEditSupplierMode && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); }}
+                                    className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition"
+                                >
+                                    ✓ סיום
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Just-added summary */}
+                        {justAddedSuppliers.length > 0 && (
+                            <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
+                                <p className="text-xs font-semibold text-emerald-400 mb-2">✓ נוספו לאירוע ({justAddedSuppliers.length}):</p>
+                                <div className="space-y-1">
+                                    {justAddedSuppliers.map((s, i) => (
+                                        <div key={i} className="flex justify-between text-xs text-emerald-300">
+                                            <span>{s.name}</span>
+                                            <span className="font-bold">{getCurrencySymbol(s.currency)}{s.pay}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <form onSubmit={handleAddOrUpdateSupplierToEvent} className="space-y-4">
                             {!isEditSupplierMode && (
                                 <div>
@@ -960,7 +998,7 @@ export default function Events() {
                                         noOptionsMessage={() => "לא נמצאו תוצאות. (האם הנגן כבר מקושר לאירוע?)"}
                                         isClearable
                                     />
-                                    <p className="text-xs text-slate-500 mt-1">אפשר לבחור מספר נגנים בו זמנית. בבחירה מרובית, השכר המוסכם יחול על כולם.</p>
+                                    <p className="text-xs text-slate-500 mt-1">אפשר לבחור מספר נגנים בו זמנית. לחץ <strong className="text-blue-400">הוסף</strong> אחרי כל בחירה כדי להמשיך להוסיף.</p>
 
                                     {currentEvent?.participants?.length > 0 && (
                                         <div className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
@@ -1030,9 +1068,20 @@ export default function Events() {
                                 </div>
                             )}
 
-                            <div className="flex justify-end gap-3 mt-6">
-                                <button type="button" onClick={() => setIsSupplierModalOpen(false)} className="px-4 py-2 text-slate-400">ביטול</button>
-                                <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium">הוסף</button>
+                            <div className="flex justify-end gap-3 mt-4">
+                                {isEditSupplierMode ? (
+                                    <>
+                                        <button type="button" onClick={() => setIsSupplierModalOpen(false)} className="px-4 py-2 text-slate-400">ביטול</button>
+                                        <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium">שמור</button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button type="button" onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); }} className="px-4 py-2 text-slate-400 hover:text-slate-200 transition">ביטול</button>
+                                        <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium flex items-center gap-2">
+                                            + הוסף
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </form>
                     </div>
