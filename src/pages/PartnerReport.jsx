@@ -19,7 +19,7 @@ export default function PartnerReport() {
     const [showMorningForm, setShowMorningForm] = useState(false);
     const [invoiceLoading, setInvoiceLoading] = useState({});
     const [invoiceResults, setInvoiceResults] = useState({});
-    const [editingInvoice, setEditingInvoice] = useState(null); // { evId, date, description }
+    const [editingInvoice, setEditingInvoice] = useState(null); // { evId, date, description, invoiceType }
 
     useEffect(() => {
         api.get(`/partners/${id}/report`)
@@ -66,7 +66,7 @@ export default function PartnerReport() {
         }
     };
 
-    const handleCreateInvoice = async (evId, customDate, customDescription, amount) => {
+    const handleCreateInvoice = async (evId, customDate, customDescription, amount, invoiceType) => {
         if (!morningToken || !report) return;
         setInvoiceLoading(prev => ({ ...prev, [evId]: true }));
         setEditingInvoice(null);
@@ -78,6 +78,7 @@ export default function PartnerReport() {
                 amount: Math.round(amount),
                 clientName: report.partner?.name || 'לקוח',
                 description: customDescription,
+                invoiceType: invoiceType || 320,
             });
             setInvoiceResults(prev => ({ ...prev, [evId]: { success: true, url: res.data.url } }));
         } catch (err) {
@@ -281,6 +282,55 @@ export default function PartnerReport() {
                     </div>
                 )}
 
+                {/* Payments */}
+                {payments.filter(p => p.direction !== 'debt').length > 0 && (
+                    <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                            <FiCreditCard className="text-purple-400" />
+                            <h2 className="font-bold text-slate-100">תשלומים ({payments.filter(p => p.direction !== 'debt').length})</h2>
+                        </div>
+                        <div className="divide-y divide-slate-700">
+                            {payments.filter(p => p.direction !== 'debt').map(pay => (
+                                <div key={pay._id} className="p-4 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-slate-100">{methodLabel(pay.method)}</p>
+                                        <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                                            <span>{new Date(pay.date).toLocaleDateString('he-IL')}</span>
+                                            {pay.eventId && <span>אירוע: {pay.eventId.title}</span>}
+                                            {pay.note && <span>{pay.note}</span>}
+                                        </div>
+                                    </div>
+                                    <span className="text-emerald-400 font-bold">{getCurrencySymbol(pay.currency)}{pay.amount.toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Debts */}
+                {payments.filter(p => p.direction === 'debt').length > 0 && (
+                    <div className="bg-slate-800 rounded-2xl border border-amber-500/20 overflow-hidden">
+                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                            <span className="text-amber-400">📝</span>
+                            <h2 className="font-bold text-slate-100">חובות ({payments.filter(p => p.direction === 'debt').length})</h2>
+                        </div>
+                        <div className="divide-y divide-slate-700">
+                            {payments.filter(p => p.direction === 'debt').map(pay => (
+                                <div key={pay._id} className="p-4 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-slate-100">{methodLabel(pay.method)}</p>
+                                        <div className="flex gap-3 text-xs text-slate-500 mt-1">
+                                            <span>{new Date(pay.date).toLocaleDateString('he-IL')}</span>
+                                            {pay.note && <span>{pay.note}</span>}
+                                        </div>
+                                    </div>
+                                    <span className="text-amber-400 font-bold">{getCurrencySymbol(pay.currency)}{pay.amount.toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Events Grouped by Month */}
                 {Object.keys(events.reduce((acc, ev) => {
                     const month = new Date(ev.date).toLocaleString('he-IL', { month: 'long', year: 'numeric' });
@@ -406,6 +456,17 @@ export default function PartnerReport() {
                                                         <p className="text-xs text-slate-400 font-medium flex items-center gap-1"><FiEdit2 size={11} /> עריכת פרטי חשבונית</p>
                                                         <div className="space-y-2">
                                                             <div>
+                                                                <label className="text-[10px] text-slate-500 block mb-1">סוג חשבונית</label>
+                                                                <select
+                                                                    value={editingInvoice.invoiceType || 320}
+                                                                    onChange={e => setEditingInvoice(p => ({ ...p, invoiceType: Number(e.target.value) }))}
+                                                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-green-500"
+                                                                >
+                                                                    <option value={320}>חשבונית מס קבלה</option>
+                                                                    <option value={305}>חשבונית מס</option>
+                                                                </select>
+                                                            </div>
+                                                            <div>
                                                                 <label className="text-[10px] text-slate-500 block mb-1">תיאור</label>
                                                                 <input
                                                                     type="text"
@@ -423,10 +484,11 @@ export default function PartnerReport() {
                                                                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-green-500"
                                                                 />
                                                             </div>
+                                                            <p className="text-[10px] text-slate-500">💡 הסכום שיוצג בחשבונית: ₪{Math.round(ev.expectedPay).toLocaleString()} <span className="text-green-500">(כולל מע״מ)</span></p>
                                                         </div>
                                                         <div className="flex gap-2 pt-1">
                                                             <button
-                                                                onClick={() => handleCreateInvoice(ev._id, editingInvoice.date, editingInvoice.description, ev.expectedPay)}
+                                                                onClick={() => handleCreateInvoice(ev._id, editingInvoice.date, editingInvoice.description, ev.expectedPay, editingInvoice.invoiceType)}
                                                                 disabled={invoiceLoading[ev._id]}
                                                                 className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition disabled:opacity-60"
                                                             >
@@ -447,6 +509,7 @@ export default function PartnerReport() {
                                                             evId: ev._id,
                                                             date: new Date(ev.date).toISOString().split('T')[0],
                                                             description: `שירותי נגינה - ${ev.title}`,
+                                                            invoiceType: 320,
                                                         })}
                                                         disabled={invoiceLoading[ev._id]}
                                                         className="flex items-center gap-1.5 text-xs bg-green-600/15 hover:bg-green-600/25 text-green-400 border border-green-500/30 px-3 py-1.5 rounded-lg transition disabled:opacity-60"
@@ -479,55 +542,6 @@ export default function PartnerReport() {
                                         <p className="text-xs text-slate-500 mt-1">{new Date(exp.date).toLocaleDateString('he-IL')}</p>
                                     </div>
                                     <span className="text-cyan-400 font-bold">₪{exp.amount.toLocaleString()}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Payments */}
-                {payments.length > 0 && (
-                    <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
-                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
-                            <FiCreditCard className="text-purple-400" />
-                            <h2 className="font-bold text-slate-100">תשלומים ({payments.filter(p => p.direction !== 'debt').length})</h2>
-                        </div>
-                        <div className="divide-y divide-slate-700">
-                            {payments.filter(p => p.direction !== 'debt').map(pay => (
-                                <div key={pay._id} className="p-4 flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium text-slate-100">{methodLabel(pay.method)}</p>
-                                        <div className="flex gap-3 text-xs text-slate-500 mt-1">
-                                            <span>{new Date(pay.date).toLocaleDateString('he-IL')}</span>
-                                            {pay.eventId && <span>אירוע: {pay.eventId.title}</span>}
-                                            {pay.note && <span>{pay.note}</span>}
-                                        </div>
-                                    </div>
-                                    <span className="text-emerald-400 font-bold">{getCurrencySymbol(pay.currency)}{pay.amount.toLocaleString()}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Debts */}
-                {payments.filter(p => p.direction === 'debt').length > 0 && (
-                    <div className="bg-slate-800 rounded-2xl border border-amber-500/20 overflow-hidden">
-                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
-                            <span className="text-amber-400">📝</span>
-                            <h2 className="font-bold text-slate-100">חובות ({payments.filter(p => p.direction === 'debt').length})</h2>
-                        </div>
-                        <div className="divide-y divide-slate-700">
-                            {payments.filter(p => p.direction === 'debt').map(pay => (
-                                <div key={pay._id} className="p-4 flex justify-between items-center">
-                                    <div>
-                                        <p className="font-medium text-slate-100">{methodLabel(pay.method)}</p>
-                                        <div className="flex gap-3 text-xs text-slate-500 mt-1">
-                                            <span>{new Date(pay.date).toLocaleDateString('he-IL')}</span>
-                                            {pay.note && <span>{pay.note}</span>}
-                                        </div>
-                                    </div>
-                                    <span className="text-amber-400 font-bold">{getCurrencySymbol(pay.currency)}{pay.amount.toLocaleString()}</span>
                                 </div>
                             ))}
                         </div>
