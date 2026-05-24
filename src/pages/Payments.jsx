@@ -23,6 +23,11 @@ export default function Payments() {
     // Active sub-tab
     const [activeTab, setActiveTab] = useState('suppliers');
 
+    // Balance filters
+    const [balanceFilter, setBalanceFilter] = useState('all');
+    const [clientBalanceFilter, setClientBalanceFilter] = useState('all');
+    const [clientSearchTerm, setClientSearchTerm] = useState('');
+
     // Client payments state
     const [clientSummary, setClientSummary] = useState(null);
     const [clientModalOpen, setClientModalOpen] = useState(false);
@@ -224,11 +229,25 @@ export default function Payments() {
         };
     });
 
+    const filteredClientEvents = (clientSummary?.events || [])
+        .filter(ev => !clientSearchTerm || ev.title.toLowerCase().includes(clientSearchTerm.toLowerCase()))
+        .filter(ev => {
+            if (clientBalanceFilter === 'balanced') return ev.balance <= 0;
+            if (clientBalanceFilter === 'unbalanced') return ev.balance > 0;
+            return true;
+        });
+
     const allBalances = [...partnerBalances, ...supplierBalances];
-    const filteredBalances = allBalances.filter(({ entity }) =>
-        entity.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entity.displayRole.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredBalances = allBalances
+        .filter(({ entity }) =>
+            entity.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            entity.displayRole.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .filter(({ balance }) => {
+            if (balanceFilter === 'balanced') return Object.values(balance).every(v => v <= 0);
+            if (balanceFilter === 'unbalanced') return Object.values(balance).some(v => v > 0);
+            return true;
+        });
 
     const openPaymentModal = (entityData, editPayment = null) => {
         setSelectedEntity({ id: entityData.id, name: entityData.entity.name, role: entityData.entity.displayRole, type: entityData.type });
@@ -356,8 +375,16 @@ export default function Payments() {
             {/* ===== SUPPLIERS / PARTNERS TAB ===== */}
             {activeTab === 'suppliers' && (
                 <div className="space-y-4">
-                    <div className="flex justify-end">
-                        <div className="relative w-full md:w-72">
+                    <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+                        <div className="flex gap-2">
+                            {[['all', 'הכל'], ['unbalanced', 'לא מאוזן'], ['balanced', 'מאוזן']].map(([val, label]) => (
+                                <button key={val} onClick={() => setBalanceFilter(val)}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${balanceFilter === val ? (val === 'balanced' ? 'bg-emerald-500 text-white' : val === 'unbalanced' ? 'bg-red-500/80 text-white' : 'bg-blue-500 text-white') : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="relative w-full sm:w-72">
                             <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                                 type="text"
@@ -561,20 +588,42 @@ export default function Payments() {
                         </div>
                     )}
 
-                    <div className="flex justify-end">
-                        <button
-                            onClick={() => openClientModal()}
-                            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition shadow"
-                        >
-                            <FiPlus size={16} /> הוסף תשלום לקוח
-                        </button>
+                    <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+                        <div className="flex gap-2">
+                            {[['all', 'הכל'], ['unbalanced', 'לא מאוזן'], ['balanced', 'מאוזן']].map(([val, label]) => (
+                                <button key={val} onClick={() => setClientBalanceFilter(val)}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${clientBalanceFilter === val ? (val === 'balanced' ? 'bg-emerald-500 text-white' : val === 'unbalanced' ? 'bg-red-500/80 text-white' : 'bg-blue-500 text-white') : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex gap-3 w-full sm:w-auto">
+                            <div className="relative flex-1 sm:w-64">
+                                <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="חיפוש לפי שם אירוע..."
+                                    value={clientSearchTerm}
+                                    onChange={e => setClientSearchTerm(e.target.value)}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl pr-10 pl-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500 transition text-sm"
+                                />
+                            </div>
+                            <button
+                                onClick={() => openClientModal()}
+                                className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-medium text-sm transition shadow whitespace-nowrap"
+                            >
+                                <FiPlus size={16} /> הוסף תשלום
+                            </button>
+                        </div>
                     </div>
 
                     {(!clientSummary?.events || clientSummary.events.length === 0) ? (
                         <p className="text-center text-slate-500 py-12">אין אירועים. הוסף אירוע תחילה!</p>
+                    ) : filteredClientEvents.length === 0 ? (
+                        <p className="text-center text-slate-500 py-12">לא נמצאו אירועים.</p>
                     ) : (
                         <div className="space-y-3">
-                            {clientSummary.events.map(ev => (
+                            {filteredClientEvents.map(ev => (
                                 <div key={ev._id} className={`bg-slate-800 rounded-2xl border overflow-hidden ${ev.balance > 0 ? 'border-red-500/30' : 'border-emerald-500/20'}`}>
                                     <div className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                         <div>
