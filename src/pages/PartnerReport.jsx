@@ -374,6 +374,11 @@ export default function PartnerReport() {
                                                             {ev.eventType}
                                                         </span>
                                                     )}
+                                                    {ev.isCashWedding && (
+                                                        <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/40">
+                                                            💵 חתונת מזומן — נא לכתוב בקבלה: התקבל במזומן
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mt-2">
                                                     <span className="flex items-center gap-1"><FiCalendar size={12} className="text-slate-600" />{new Date(ev.date).toLocaleDateString('he-IL')}</span>
