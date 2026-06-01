@@ -67,7 +67,7 @@ export default function SupplierReport() {
         }
     };
 
-    const handleCreateInvoice = async (evId, customDate, customDescription, amount, invoiceType) => {
+    const handleCreateInvoice = async (evId, customDate, customDescription, amount, invoiceType, clientName) => {
         if (!morningToken) return;
         setInvoiceLoading(prev => ({ ...prev, [evId]: true }));
         setEditingInvoice(null);
@@ -77,7 +77,7 @@ export default function SupplierReport() {
                 eventTitle: customDescription,
                 eventDate: customDate,
                 amount: Math.round(amount),
-                clientName: report?.supplier?.name || 'לקוח',
+                clientName: clientName || report?.supplier?.name || 'לקוח',
                 description: customDescription,
                 invoiceType: invoiceType || 320,
             });
@@ -415,6 +415,16 @@ export default function SupplierReport() {
                                                                 </select>
                                                             </div>
                                                             <div>
+                                                                <label className="text-[10px] text-slate-500 block mb-1">שם הלקוח (שם הזוג)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={editingInvoice.clientName || ''}
+                                                                    onChange={e => setEditingInvoice(p => ({ ...p, clientName: e.target.value }))}
+                                                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-green-500"
+                                                                    placeholder="שם הזוג / הלקוח"
+                                                                />
+                                                            </div>
+                                                            <div>
                                                                 <label className="text-[10px] text-slate-500 block mb-1">תיאור</label>
                                                                 <input
                                                                     type="text"
@@ -436,7 +446,7 @@ export default function SupplierReport() {
                                                         </div>
                                                         <div className="flex gap-2 pt-1">
                                                             <button
-                                                                onClick={() => handleCreateInvoice(ev._id, editingInvoice.date, editingInvoice.description, ev.expectedPay, editingInvoice.invoiceType)}
+                                                                onClick={() => handleCreateInvoice(ev._id, editingInvoice.date, editingInvoice.description, ev.expectedPay, editingInvoice.invoiceType, editingInvoice.clientName)}
                                                                 disabled={invoiceLoading[ev._id]}
                                                                 className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition disabled:opacity-60"
                                                             >
@@ -457,6 +467,7 @@ export default function SupplierReport() {
                                                             evId: ev._id,
                                                             date: new Date(ev.date).toISOString().split('T')[0],
                                                             description: `שירותי נגינה - ${ev.title}`,
+                                                            clientName: ev.title,
                                                             invoiceType: 320,
                                                         })}
                                                         disabled={invoiceLoading[ev._id]}

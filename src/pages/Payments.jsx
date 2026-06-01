@@ -375,6 +375,28 @@ export default function Payments() {
             {/* ===== SUPPLIERS / PARTNERS TAB ===== */}
             {activeTab === 'suppliers' && (
                 <div className="space-y-4">
+                    {/* Summary cards */}
+                    {allBalances.length > 0 && (() => {
+                        const totalOwed = allBalances.reduce((sum, { balance }) => sum + Math.max(0, balance.Shekel), 0);
+                        const totalPaidS = allBalances.reduce((sum, { totalPaid }) => sum + totalPaid.Shekel, 0);
+                        const totalExpectedS = allBalances.reduce((sum, { totalExpected, totalBandExpense }) => sum + totalExpected.Shekel + totalBandExpense, 0);
+                        return (
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+                                    <p className="text-xs text-slate-500 mb-1">סה"כ לתשלום לספקים/שותפים</p>
+                                    <p className="text-2xl font-bold text-blue-400">₪{Math.round(totalExpectedS).toLocaleString()}</p>
+                                </div>
+                                <div className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+                                    <p className="text-xs text-slate-500 mb-1">שולם</p>
+                                    <p className="text-2xl font-bold text-emerald-400">₪{Math.round(totalPaidS).toLocaleString()}</p>
+                                </div>
+                                <div className={`rounded-2xl p-4 border ${totalOwed > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+                                    <p className="text-xs text-slate-500 mb-1">חוב שנותר לתשלום</p>
+                                    <p className={`text-2xl font-bold ${totalOwed > 0 ? 'text-red-400' : 'text-emerald-400'}`}>₪{Math.round(totalOwed).toLocaleString()}</p>
+                                </div>
+                            </div>
+                        );
+                    })()}
                     <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
                         <div className="flex gap-2">
                             {[['all', 'הכל'], ['unbalanced', 'לא מאוזן'], ['balanced', 'מאוזן']].map(([val, label]) => (
