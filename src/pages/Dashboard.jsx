@@ -316,6 +316,32 @@ export default function Dashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Cash Balance */}
+            {summary?.cashBalance !== undefined && (
+                <div className="mt-6 border-t border-slate-700/50 pt-6">
+                    <h3 className="text-2xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                        💵 מאזן מזומן
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                            <p className="text-sm text-slate-400 mb-1">התקבל במזומן מלקוחות</p>
+                            <p className="text-3xl font-bold text-emerald-400">₪{summary.cashBalance.fromClients.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-slate-800 rounded-2xl p-5 border border-slate-700">
+                            <p className="text-sm text-slate-400 mb-1">שולם במזומן לספקים/שותפים</p>
+                            <p className="text-3xl font-bold text-red-400">₪{summary.cashBalance.toSuppliers.toLocaleString()}</p>
+                        </div>
+                        <div className={`rounded-2xl p-5 border ${summary.cashBalance.net >= 0 ? 'bg-amber-500/10 border-amber-500/40' : 'bg-red-500/10 border-red-500/30'}`}>
+                            <p className="text-sm text-slate-400 mb-1">מזומן שצריך להיות בידיך</p>
+                            <p className={`text-3xl font-bold ${summary.cashBalance.net >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                                ₪{summary.cashBalance.net.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">קיבלת ממזומן − שילמת במזומן</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
