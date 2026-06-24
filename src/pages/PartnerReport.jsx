@@ -103,7 +103,7 @@ export default function PartnerReport() {
         </div>
     );
 
-    const { partner, events, payments, totalExpected, totalPaid, totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 }, linkedBandExpenses = [], totalBandExpenses = { Shekel: 0 }, budgetInfo } = report;
+    const { partner, events, payments, totalExpected, totalPaid, totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 }, linkedBandExpenses = [], totalBandExpenses = { Shekel: 0 }, linkedExpenses = [], budgetInfo } = report;
     const totalBudgetDeduction = (budgetInfo?.totalBudgetDeduction || 0);
     const balance = {
         Shekel: totalExpected.Shekel + (totalBandExpenses.Shekel || 0) + (totalDebt.Shekel || 0) - totalBudgetDeduction - totalPaid.Shekel,
@@ -325,6 +325,27 @@ export default function PartnerReport() {
                                         </div>
                                     </div>
                                     <span className="text-amber-400 font-bold">{getCurrencySymbol(pay.currency)}{pay.amount.toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Linked Expenses */}
+                {linkedExpenses.length > 0 && (
+                    <div className="bg-slate-800 rounded-2xl border border-orange-500/20 overflow-hidden">
+                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                            <span className="text-orange-400">💰</span>
+                            <h2 className="font-bold text-slate-100">הוצאות שמקושרות ({linkedExpenses.length})</h2>
+                        </div>
+                        <div className="divide-y divide-slate-700">
+                            {linkedExpenses.map((exp, idx) => (
+                                <div key={idx} className="p-4 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-slate-100">{exp.description}</p>
+                                        <p className="text-xs text-slate-500 mt-1">אירוע: {exp.eventTitle}</p>
+                                    </div>
+                                    <span className="text-orange-400 font-bold">{getCurrencySymbol(exp.currency)}{exp.amount.toLocaleString()}</span>
                                 </div>
                             ))}
                         </div>
