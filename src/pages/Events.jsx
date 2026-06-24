@@ -71,6 +71,10 @@ export default function Events() {
     const [currentParticipantId, setCurrentParticipantId] = useState(null);
     const [justAddedSuppliers, setJustAddedSuppliers] = useState([]); // suppliers added in current modal session
 
+    const [suppliersModalTab, setSuppliersModalTab] = useState('suppliers'); // 'suppliers' or 'expenses'
+    const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', currency: 'Shekel', supplierId: '', partnerId: '' });
+    const [justAddedExpenses, setJustAddedExpenses] = useState([]);
+
     // Calendar invite state
     const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
     const [calendarEventId, setCalendarEventId] = useState(null);
@@ -229,6 +233,42 @@ export default function Events() {
         }
     };
 
+    const handleAddExpense = async (e) => {
+        e.preventDefault();
+        try {
+            if (!expenseForm.description || !expenseForm.amount) {
+                alert('נא למלא תיאור וסכום');
+                return;
+            }
+            const payload = {
+                description: expenseForm.description,
+                amount: parseFloat(expenseForm.amount),
+                currency: expenseForm.currency,
+                supplierId: expenseForm.supplierId || null,
+                partnerId: expenseForm.partnerId || null
+            };
+            await api.post(`/events/${currentEventId}/expenses`, payload);
+            const addedExpense = {
+                description: expenseForm.description,
+                amount: expenseForm.amount,
+                currency: expenseForm.currency,
+                linkedTo: expenseForm.supplierId ? suppliers.find(s => s._id === expenseForm.supplierId)?.name : (expenseForm.partnerId ? partners.find(p => p._id === expenseForm.partnerId)?.name : null)
+            };
+            setJustAddedExpenses(prev => [...prev, addedExpense]);
+            setExpenseForm({ description: '', amount: '', currency: 'Shekel', supplierId: '', partnerId: '' });
+            fetchData();
+        } catch (err) { alert(err.response?.data?.message || 'Error adding expense'); }
+    };
+
+    const handleRemoveExpense = async (eventId, expenseId) => {
+        if (window.confirm('האם אתה בטוח שברצונך להסיר הוצאה זו?')) {
+            try {
+                await api.delete(`/events/${eventId}/expenses/${expenseId}`);
+                fetchData();
+            } catch (err) { console.error(err); }
+        }
+    };
+
     const openEventModal = (ev = null) => {
         if (ev) {
             setIsEditEventMode(true);
@@ -255,6 +295,9 @@ export default function Events() {
     const openSupplierModal = (eventId, participant = null) => {
         setCurrentEventId(eventId);
         setJustAddedSuppliers([]);
+        setJustAddedExpenses([]);
+        setSuppliersModalTab(participant ? 'suppliers' : 'suppliers');
+        setExpenseForm({ description: '', amount: '', currency: 'Shekel', supplierId: '', partnerId: '' });
         if (participant) {
             setIsEditSupplierMode(true);
             setCurrentParticipantId(participant.supplierId._id);
@@ -755,6 +798,46 @@ export default function Events() {
                                                     </div>
                                                 )}
 
+                                                {/* Expenses Section */}
+                                                {ev.expenses && ev.expenses.length > 0 && (
+                                                    <div className="mt-6 pt-4 border-t border-slate-700">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <h4 className="font-bold text-amber-300">💰 הוצאות נוספות:</h4>
+                                                            <button
+                                                                onClick={() => openSupplierModal(ev._id)}
+                                                                className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1"
+                                                                title="הוסף הוצאה נוספת"
+                                                            >
+                                                                <FiPlus size={14} /> הוסף הוצאה
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {ev.expenses.map(exp => (
+                                                                <div key={exp._id} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700 flex justify-between items-start">
+                                                                    <div>
+                                                                        <p className="font-bold text-slate-100 text-sm">{exp.description}</p>
+                                                                        {(exp.supplierId || exp.partnerId) && (
+                                                                            <p className="text-xs text-amber-400 mt-1">
+                                                                                קשור ל: {exp.supplierId?.name || exp.partnerId?.name}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-bold text-amber-300">{getCurrencySymbol(exp.currency)}{exp.amount}</span>
+                                                                        <button
+                                                                            onClick={() => handleRemoveExpense(ev._id, exp._id)}
+                                                                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition"
+                                                                            title="הסר הוצאה"
+                                                                        >
+                                                                            <FiTrash2 size={14} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {/* Partner Earnings Section */}
                                                 {partners.length > 0 && (
                                                     <div className="mt-6 pt-4 border-t border-slate-700">
@@ -943,11 +1026,11 @@ export default function Events() {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-2xl font-bold">{isEditSupplierMode ? 'ערוך שכר מסוכם' : 'הוסף נגן/ספק לאירוע'}</h3>
+                            <h3 className="text-2xl font-bold">{isEditSupplierMode ? 'ערוך שכר מסוכם' : 'הוסף נגן/ספק/הוצאה לאירוע'}</h3>
                             {!isEditSupplierMode && (
                                 <button
                                     type="button"
-                                    onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); }}
+                                    onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); setJustAddedExpenses([]); setSuppliersModalTab('suppliers'); }}
                                     className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition"
                                 >
                                     ✓ סיום
@@ -955,8 +1038,26 @@ export default function Events() {
                             )}
                         </div>
 
+                        {/* Tabs */}
+                        {!isEditSupplierMode && (
+                            <div className="flex gap-2 mb-4 border-b border-slate-700">
+                                <button
+                                    onClick={() => setSuppliersModalTab('suppliers')}
+                                    className={`px-4 py-2 font-medium transition ${suppliersModalTab === 'suppliers' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-400 hover:text-slate-300'}`}
+                                >
+                                    🎵 נגנים/ספקים
+                                </button>
+                                <button
+                                    onClick={() => setSuppliersModalTab('expenses')}
+                                    className={`px-4 py-2 font-medium transition ${suppliersModalTab === 'expenses' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-400 hover:text-slate-300'}`}
+                                >
+                                    💰 הוצאות נוספות
+                                </button>
+                            </div>
+                        )}
+
                         {/* Just-added summary */}
-                        {justAddedSuppliers.length > 0 && (
+                        {suppliersModalTab === 'suppliers' && justAddedSuppliers.length > 0 && (
                             <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
                                 <p className="text-xs font-semibold text-emerald-400 mb-2">✓ נוספו לאירוע ({justAddedSuppliers.length}):</p>
                                 <div className="space-y-1">
@@ -970,6 +1071,21 @@ export default function Events() {
                             </div>
                         )}
 
+                        {suppliersModalTab === 'expenses' && justAddedExpenses.length > 0 && (
+                            <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
+                                <p className="text-xs font-semibold text-emerald-400 mb-2">✓ נוספו לאירוע ({justAddedExpenses.length}):</p>
+                                <div className="space-y-1">
+                                    {justAddedExpenses.map((e, i) => (
+                                        <div key={i} className="flex justify-between text-xs text-emerald-300">
+                                            <span>{e.description} {e.linkedTo ? `(${e.linkedTo})` : '(בתקציב)'}</span>
+                                            <span className="font-bold">{getCurrencySymbol(e.currency)}{e.amount}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {suppliersModalTab === 'suppliers' && (
                         <form onSubmit={handleAddOrUpdateSupplierToEvent} className="space-y-4">
                             {!isEditSupplierMode && (
                                 <div>
@@ -1076,7 +1192,7 @@ export default function Events() {
                                     </>
                                 ) : (
                                     <>
-                                        <button type="button" onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); }} className="px-4 py-2 text-slate-400 hover:text-slate-200 transition">ביטול</button>
+                                        <button type="button" onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); setJustAddedExpenses([]); }} className="px-4 py-2 text-slate-400 hover:text-slate-200 transition">ביטול</button>
                                         <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium flex items-center gap-2">
                                             + הוסף
                                         </button>
@@ -1084,6 +1200,89 @@ export default function Events() {
                                 )}
                             </div>
                         </form>
+                        )}
+
+                        {suppliersModalTab === 'expenses' && (
+                        <form onSubmit={handleAddExpense} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">תיאור הוצאה</label>
+                                <input
+                                    required
+                                    type="text"
+                                    value={expenseForm.description}
+                                    onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })}
+                                    placeholder="למשל: כרטיסי טיסה, אוכל, הדפסה וכו'"
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">סכום</label>
+                                    <input
+                                        required
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={expenseForm.amount}
+                                        onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">מטבע</label>
+                                    <select
+                                        value={expenseForm.currency}
+                                        onChange={e => setExpenseForm({ ...expenseForm, currency: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100"
+                                    >
+                                        <option value="Shekel">שקל (₪)</option>
+                                        <option value="Dollar">דולר ($)</option>
+                                        <option value="Euro">יורו (€)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                                <p className="text-xs font-medium text-slate-400 mb-3">קישור לספק/שותף (אופציונלי)</p>
+                                <div className="space-y-2">
+                                    <div>
+                                        <label className="block text-xs text-slate-500 mb-1">קושר לספק (ההוצאה תופיע בחובו בדוח)</label>
+                                        <select
+                                            value={expenseForm.supplierId}
+                                            onChange={e => setExpenseForm({ ...expenseForm, supplierId: e.target.value, partnerId: '' })}
+                                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs"
+                                        >
+                                            <option value="">-- לא קשור --</option>
+                                            {suppliers.map(s => (
+                                                <option key={s._id} value={s._id}>{s.name} ({s.role})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-slate-500 mb-1">או קושר לשותף</label>
+                                        <select
+                                            value={expenseForm.partnerId}
+                                            onChange={e => setExpenseForm({ ...expenseForm, partnerId: e.target.value, supplierId: '' })}
+                                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-slate-100 text-xs"
+                                        >
+                                            <option value="">-- לא קשור --</option>
+                                            {partners.map(p => (
+                                                <option key={p._id} value={p._id}>{p.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-3 mt-4">
+                                <button type="button" onClick={() => { setIsSupplierModalOpen(false); setJustAddedExpenses([]); }} className="px-4 py-2 text-slate-400 hover:text-slate-200 transition">ביטול</button>
+                                <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium flex items-center gap-2">
+                                    + הוסף הוצאה
+                                </button>
+                            </div>
+                        </form>
+                        )}
                     </div>
                 </div>
             )}
