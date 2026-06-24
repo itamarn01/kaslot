@@ -72,7 +72,9 @@ export default function Events() {
     const [justAddedSuppliers, setJustAddedSuppliers] = useState([]); // suppliers added in current modal session
 
     const [suppliersModalTab, setSuppliersModalTab] = useState('suppliers'); // 'suppliers' or 'expenses'
-    const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', currency: 'Shekel', supplierId: '', partnerId: '' });
+    const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
+    const [isEditingExpense, setIsEditingExpense] = useState(false);
+    const [editingExpenseId, setEditingExpenseId] = useState(null);
     const [justAddedExpenses, setJustAddedExpenses] = useState([]);
 
     // Calendar invite state
@@ -233,7 +235,7 @@ export default function Events() {
         }
     };
 
-    const handleAddExpense = async (e) => {
+    const handleAddOrUpdateExpense = async (e) => {
         e.preventDefault();
         try {
             if (!expenseForm.description || !expenseForm.amount) {
@@ -244,20 +246,30 @@ export default function Events() {
                 description: expenseForm.description,
                 amount: parseFloat(expenseForm.amount),
                 currency: expenseForm.currency,
+                date: expenseForm.date || new Date().toISOString().split('T')[0],
+                method: expenseForm.method,
                 supplierId: expenseForm.supplierId || null,
                 partnerId: expenseForm.partnerId || null
             };
-            await api.post(`/events/${currentEventId}/expenses`, payload);
-            const addedExpense = {
-                description: expenseForm.description,
-                amount: expenseForm.amount,
-                currency: expenseForm.currency,
-                linkedTo: expenseForm.supplierId ? suppliers.find(s => s._id === expenseForm.supplierId)?.name : (expenseForm.partnerId ? partners.find(p => p._id === expenseForm.partnerId)?.name : null)
-            };
-            setJustAddedExpenses(prev => [...prev, addedExpense]);
-            setExpenseForm({ description: '', amount: '', currency: 'Shekel', supplierId: '', partnerId: '' });
+
+            if (isEditingExpense && editingExpenseId) {
+                await api.put(`/events/${currentEventId}/expenses/${editingExpenseId}`, payload);
+            } else {
+                await api.post(`/events/${currentEventId}/expenses`, payload);
+                const addedExpense = {
+                    description: expenseForm.description,
+                    amount: expenseForm.amount,
+                    currency: expenseForm.currency,
+                    linkedTo: expenseForm.supplierId ? suppliers.find(s => s._id === expenseForm.supplierId)?.name : (expenseForm.partnerId ? partners.find(p => p._id === expenseForm.partnerId)?.name : null)
+                };
+                setJustAddedExpenses(prev => [...prev, addedExpense]);
+            }
+
+            setExpenseForm({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
+            setIsEditingExpense(false);
+            setEditingExpenseId(null);
             fetchData();
-        } catch (err) { alert(err.response?.data?.message || 'Error adding expense'); }
+        } catch (err) { alert(err.response?.data?.message || 'Error saving expense'); }
     };
 
     const handleRemoveExpense = async (eventId, expenseId) => {
@@ -267,6 +279,23 @@ export default function Events() {
                 fetchData();
             } catch (err) { console.error(err); }
         }
+    };
+
+    const openEditExpenseModal = (eventId, expense) => {
+        setCurrentEventId(eventId);
+        setSuppliersModalTab('expenses');
+        setIsEditingExpense(true);
+        setEditingExpenseId(expense._id);
+        setExpenseForm({
+            description: expense.description,
+            amount: expense.amount,
+            currency: expense.currency,
+            date: expense.date ? expense.date.split('T')[0] : '',
+            method: expense.method || 'Credit Card',
+            supplierId: expense.supplierId?._id || expense.supplierId || '',
+            partnerId: expense.partnerId?._id || expense.partnerId || ''
+        });
+        setIsSupplierModalOpen(true);
     };
 
     const openEventModal = (ev = null) => {
@@ -814,8 +843,12 @@ export default function Events() {
                                                         <div className="space-y-2">
                                                             {ev.expenses.map(exp => (
                                                                 <div key={exp._id} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700 flex justify-between items-start">
-                                                                    <div>
+                                                                    <div className="flex-1">
                                                                         <p className="font-bold text-slate-100 text-sm">{exp.description}</p>
+                                                                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                                                                            {exp.date && <span>{new Date(exp.date).toLocaleDateString('he-IL')}</span>}
+                                                                            {exp.method && <span>{exp.method === 'Credit Card' ? 'כרטיס אשראי' : exp.method === 'Cash' ? 'מזומן' : exp.method}</span>}
+                                                                        </div>
                                                                         {(exp.supplierId || exp.partnerId) && (
                                                                             <p className="text-xs text-amber-400 mt-1">
                                                                                 קשור ל: {exp.supplierId?.name || exp.partnerId?.name}
@@ -823,7 +856,14 @@ export default function Events() {
                                                                         )}
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="font-bold text-amber-300">{getCurrencySymbol(exp.currency)}{exp.amount}</span>
+                                                                        <span className="font-bold text-amber-300 whitespace-nowrap">{getCurrencySymbol(exp.currency)}{exp.amount}</span>
+                                                                        <button
+                                                                            onClick={() => openEditExpenseModal(ev._id, exp)}
+                                                                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition"
+                                                                            title="ערוך הוצאה"
+                                                                        >
+                                                                            <FiEdit2 size={14} />
+                                                                        </button>
                                                                         <button
                                                                             onClick={() => handleRemoveExpense(ev._id, exp._id)}
                                                                             className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition"
@@ -1203,7 +1243,11 @@ export default function Events() {
                         )}
 
                         {suppliersModalTab === 'expenses' && (
-                        <form onSubmit={handleAddExpense} className="space-y-4">
+                        <form onSubmit={handleAddOrUpdateExpense} className="space-y-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-bold text-slate-100">{isEditingExpense ? 'ערוך הוצאה' : 'הוסף הוצאה חדשה'}</h4>
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-slate-400 mb-1">תיאור הוצאה</label>
                                 <input
@@ -1216,7 +1260,7 @@ export default function Events() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-3 gap-3">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">סכום</label>
                                     <input
@@ -1236,11 +1280,36 @@ export default function Events() {
                                         onChange={e => setExpenseForm({ ...expenseForm, currency: e.target.value })}
                                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100"
                                     >
-                                        <option value="Shekel">שקל (₪)</option>
-                                        <option value="Dollar">דולר ($)</option>
-                                        <option value="Euro">יורו (€)</option>
+                                        <option value="Shekel">₪</option>
+                                        <option value="Dollar">$</option>
+                                        <option value="Euro">€</option>
                                     </select>
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">תאריך</label>
+                                    <input
+                                        type="date"
+                                        value={expenseForm.date}
+                                        onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">איך שולם</label>
+                                <select
+                                    value={expenseForm.method}
+                                    onChange={e => setExpenseForm({ ...expenseForm, method: e.target.value })}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100"
+                                >
+                                    <option value="Credit Card">כרטיס אשראי</option>
+                                    <option value="Cash">מזומן</option>
+                                    <option value="Bit">ביט</option>
+                                    <option value="Paybox">פייבוקס</option>
+                                    <option value="Bank Transfer">העברה בנקאית</option>
+                                    <option value="Check">צ'ק</option>
+                                </select>
                             </div>
 
                             <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
@@ -1276,9 +1345,21 @@ export default function Events() {
                             </div>
 
                             <div className="flex justify-end gap-3 mt-4">
-                                <button type="button" onClick={() => { setIsSupplierModalOpen(false); setJustAddedExpenses([]); }} className="px-4 py-2 text-slate-400 hover:text-slate-200 transition">ביטול</button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsSupplierModalOpen(false);
+                                        setJustAddedExpenses([]);
+                                        setIsEditingExpense(false);
+                                        setEditingExpenseId(null);
+                                        setExpenseForm({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
+                                    }}
+                                    className="px-4 py-2 text-slate-400 hover:text-slate-200 transition"
+                                >
+                                    ביטול
+                                </button>
                                 <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium flex items-center gap-2">
-                                    + הוסף הוצאה
+                                    {isEditingExpense ? '✓ שמור' : '+ הוסף הוצאה'}
                                 </button>
                             </div>
                         </form>

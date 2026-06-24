@@ -76,8 +76,13 @@ export default function Dashboard() {
                     });
                 }
 
-                monthlyStats[monthIndex].expenses += eventExpenses;
-                monthlyStats[monthIndex].profit += (ev.totalPrice || 0) - eventExpenses;
+                // Unlinked event expenses (from ev.expenses)
+                const unlinkedEventExpenses = (ev.expenses || [])
+                    .filter(exp => !exp.partnerId && !exp.supplierId)
+                    .reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
+                monthlyStats[monthIndex].expenses += eventExpenses + unlinkedEventExpenses;
+                monthlyStats[monthIndex].profit += (ev.totalPrice || 0) - eventExpenses - unlinkedEventExpenses;
             }
         });
 
@@ -342,6 +347,28 @@ export default function Dashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Unlinked Event Expenses Summary */}
+            {events.length > 0 && (() => {
+                const unlinkedExpensesTotal = events.reduce((sum, ev) => {
+                    const unlinked = (ev.expenses || [])
+                        .filter(exp => !exp.partnerId && !exp.supplierId)
+                        .reduce((s, exp) => s + (exp.amount || 0), 0);
+                    return sum + unlinked;
+                }, 0);
+                return unlinkedExpensesTotal > 0 ? (
+                    <div className="mt-6 border-t border-slate-700/50 pt-6">
+                        <h3 className="text-2xl font-bold text-slate-100 mb-4 flex items-center gap-2">
+                            📋 הוצאות כלליות (ללא קישור)
+                        </h3>
+                        <div className="bg-slate-800 rounded-2xl p-5 border border-orange-500/30">
+                            <p className="text-sm text-slate-400 mb-2">סה״כ הוצאות שלא מקושרות לספק/שותף</p>
+                            <p className="text-4xl font-bold text-orange-400">₪{Math.round(unlinkedExpensesTotal).toLocaleString()}</p>
+                            <p className="text-xs text-slate-500 mt-2">הוצאות אלו יקוזזו מהרווח של הלהקה</p>
+                        </div>
+                    </div>
+                ) : null;
+            })()}
         </div>
     );
 }
