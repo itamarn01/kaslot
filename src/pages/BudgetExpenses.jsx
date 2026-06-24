@@ -107,6 +107,7 @@ export default function BudgetExpenses() {
   const [partners, setPartners] = useState([]);
   const [linkSearch, setLinkSearch] = useState('');
   const [linkDropdownOpen, setLinkDropdownOpen] = useState(false);
+  const [events, setEvents] = useState([]);
 
   const availableYears = useMemo(() => {
     const years = new Set();
@@ -135,12 +136,14 @@ export default function BudgetExpenses() {
 
   const fetchEntities = async () => {
     try {
-      const [suppRes, partRes] = await Promise.all([
+      const [suppRes, partRes, eventsRes] = await Promise.all([
         api.get('/suppliers'),
         api.get('/partners'),
+        api.get('/events'),
       ]);
       setSuppliers(suppRes.data);
       setPartners(partRes.data);
+      setEvents(eventsRes.data);
     } catch (e) { console.error(e); }
   };
 
@@ -686,6 +689,53 @@ export default function BudgetExpenses() {
           </div>
         )}
       </div>
+
+      {/* ===== UNLINKED EVENT EXPENSES SECTION ===== */}
+      {(() => {
+        const unlinkedEventExpenses = events
+          .filter(ev => new Date(ev.date).getFullYear() === selectedYear)
+          .flatMap(ev =>
+            (ev.expenses || [])
+              .filter(exp => !exp.partnerId && !exp.supplierId)
+              .map(exp => ({ ...exp, eventTitle: ev.title, eventDate: ev.date }))
+          );
+        if (unlinkedEventExpenses.length === 0) return null;
+        const total = unlinkedEventExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        return (
+          <div className="bg-slate-800 rounded-2xl border border-orange-500/30 shadow-lg overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-orange-500/15">
+                  <FiTrendingDown size={22} className="text-orange-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-100">הוצאות כלליות מאירועים {selectedYear}</h3>
+                  <p className="text-xs text-slate-500">הוצאות שלא קושרו לספק/שותף — מקוזזות מרווח הלהקה</p>
+                </div>
+              </div>
+              <span className="text-orange-400 font-bold text-lg">₪{Math.round(total).toLocaleString()}</span>
+            </div>
+            <div className="divide-y divide-slate-700/60">
+              {unlinkedEventExpenses.map(exp => (
+                <div key={exp._id} className="px-5 py-3 flex justify-between items-center hover:bg-slate-700/20 transition">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">{exp.description}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {exp.eventTitle} • {new Date(exp.eventDate).toLocaleDateString('he-IL')}
+                      {exp.method && ` • ${PAYMENT_METHODS.find(m => m.value === exp.method)?.label || exp.method}`}
+                    </p>
+                  </div>
+                  <span className="text-orange-400 font-bold text-sm">₪{(exp.amount || 0).toLocaleString()}</span>
+                </div>
+              ))}
+              <div className="px-5 py-4 bg-slate-900/40 flex justify-between items-center">
+                <span className="text-slate-400 font-semibold text-sm">סה״כ הוצאות כלליות</span>
+                <span className="text-orange-400 font-bold text-xl">₪{Math.round(total).toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ===== BALANCE SECTION ===== */}
       {budgetAmount > 0 && (
