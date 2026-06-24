@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
-import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch, FiDownload, FiUpload, FiSend, FiRefreshCw, FiLink, FiX } from 'react-icons/fi';
+import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch, FiDownload, FiUpload, FiSend, FiRefreshCw, FiLink, FiX, FiDollarSign } from 'react-icons/fi';
 import Select from 'react-select';
 import { EventsSkeleton } from '../components/Skeletons';
+
+const PAYMENT_METHODS = [
+    { value: 'Credit Card', label: 'אשראי' },
+    { value: 'Cash', label: 'מזומן' },
+    { value: 'Bit', label: 'ביט' },
+    { value: 'Paybox', label: 'פייבוקס' },
+    { value: 'Bank Transfer', label: 'העברה בנקאית' },
+    { value: 'Check', label: "צ'ק" },
+];
 
 const customSelectStyles = {
     control: (base, state) => ({
@@ -71,14 +80,6 @@ export default function Events() {
     const [currentParticipantId, setCurrentParticipantId] = useState(null);
     const [justAddedSuppliers, setJustAddedSuppliers] = useState([]); // suppliers added in current modal session
 
-    const [suppliersModalTab, setSuppliersModalTab] = useState('suppliers'); // 'suppliers' or 'expenses'
-    const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
-    const [isEditingExpense, setIsEditingExpense] = useState(false);
-    const [editingExpenseId, setEditingExpenseId] = useState(null);
-    const [justAddedExpenses, setJustAddedExpenses] = useState([]);
-    const [expenseLinkSearch, setExpenseLinkSearch] = useState('');
-    const [expenseLinkDropdownOpen, setExpenseLinkDropdownOpen] = useState(false);
-
     // Calendar invite state
     const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
     const [calendarEventId, setCalendarEventId] = useState(null);
@@ -108,6 +109,14 @@ export default function Events() {
     const [gcalResult, setGcalResult] = useState(null);
     const [gcalSyncing, setGcalSyncing] = useState(false);
     const [gcalSyncResult, setGcalSyncResult] = useState(null);
+
+    // Expense modal state
+    const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+    const [isEditExpenseMode, setIsEditExpenseMode] = useState(false);
+    const [currentExpenseId, setCurrentExpenseId] = useState(null);
+    const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
+    const [expenseLinkSearch, setExpenseLinkSearch] = useState('');
+    const [expenseLinkDropdownOpen, setExpenseLinkDropdownOpen] = useState(false);
 
     const fileInputRef = useRef(null);
     const dataMenuRef = useRef(null);
@@ -237,73 +246,6 @@ export default function Events() {
         }
     };
 
-    const handleAddOrUpdateExpense = async (e) => {
-        e.preventDefault();
-        try {
-            if (!expenseForm.description || !expenseForm.amount) {
-                alert('נא למלא תיאור וסכום');
-                return;
-            }
-            const payload = {
-                description: expenseForm.description,
-                amount: parseFloat(expenseForm.amount),
-                currency: expenseForm.currency,
-                date: expenseForm.date || new Date().toISOString().split('T')[0],
-                method: expenseForm.method,
-                supplierId: expenseForm.supplierId || null,
-                partnerId: expenseForm.partnerId || null
-            };
-
-            if (isEditingExpense && editingExpenseId) {
-                await api.put(`/events/${currentEventId}/expenses/${editingExpenseId}`, payload);
-            } else {
-                await api.post(`/events/${currentEventId}/expenses`, payload);
-                const addedExpense = {
-                    description: expenseForm.description,
-                    amount: expenseForm.amount,
-                    currency: expenseForm.currency,
-                    linkedTo: expenseForm.supplierId ? suppliers.find(s => s._id === expenseForm.supplierId)?.name : (expenseForm.partnerId ? partners.find(p => p._id === expenseForm.partnerId)?.name : null)
-                };
-                setJustAddedExpenses(prev => [...prev, addedExpense]);
-            }
-
-            setExpenseForm({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
-            setIsEditingExpense(false);
-            setEditingExpenseId(null);
-            setExpenseLinkSearch('');
-            setExpenseLinkDropdownOpen(false);
-            fetchData();
-        } catch (err) { alert(err.response?.data?.message || 'Error saving expense'); }
-    };
-
-    const handleRemoveExpense = async (eventId, expenseId) => {
-        if (window.confirm('האם אתה בטוח שברצונך להסיר הוצאה זו?')) {
-            try {
-                await api.delete(`/events/${eventId}/expenses/${expenseId}`);
-                fetchData();
-            } catch (err) { console.error(err); }
-        }
-    };
-
-    const openEditExpenseModal = (eventId, expense) => {
-        setCurrentEventId(eventId);
-        setSuppliersModalTab('expenses');
-        setIsEditingExpense(true);
-        setEditingExpenseId(expense._id);
-        setExpenseForm({
-            description: expense.description,
-            amount: expense.amount,
-            currency: expense.currency,
-            date: expense.date ? expense.date.split('T')[0] : '',
-            method: expense.method || 'Credit Card',
-            supplierId: expense.supplierId?._id || expense.supplierId || '',
-            partnerId: expense.partnerId?._id || expense.partnerId || ''
-        });
-        setExpenseLinkSearch('');
-        setExpenseLinkDropdownOpen(false);
-        setIsSupplierModalOpen(true);
-    };
-
     const openEventModal = (ev = null) => {
         if (ev) {
             setIsEditEventMode(true);
@@ -330,11 +272,6 @@ export default function Events() {
     const openSupplierModal = (eventId, participant = null) => {
         setCurrentEventId(eventId);
         setJustAddedSuppliers([]);
-        setJustAddedExpenses([]);
-        setSuppliersModalTab(participant ? 'suppliers' : 'suppliers');
-        setExpenseForm({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
-        setExpenseLinkSearch('');
-        setExpenseLinkDropdownOpen(false);
         if (participant) {
             setIsEditSupplierMode(true);
             setCurrentParticipantId(participant.supplierId._id);
@@ -363,46 +300,6 @@ export default function Events() {
             label: `${s.name} (${s.role})`,
             supplier: s
         }));
-
-    const getExpenseLinkName = () => {
-        if (expenseForm.supplierId) {
-            const s = suppliers.find(s => s._id === expenseForm.supplierId);
-            return s ? `${s.name} (${s.role})` : '';
-        }
-        if (expenseForm.partnerId) {
-            const p = partners.find(p => p._id === expenseForm.partnerId);
-            return p ? `${p.name} (שותף)` : '';
-        }
-        return '';
-    };
-
-    const filteredExpenseLinkEntities = !expenseLinkSearch.trim() ? [] : (() => {
-        const term = expenseLinkSearch.toLowerCase();
-        const results = [];
-        suppliers.forEach(s => {
-            if (s.name.toLowerCase().includes(term) || (s.role && s.role.toLowerCase().includes(term))) {
-                results.push({ type: 'supplier', id: s._id, name: s.name, role: s.role });
-            }
-        });
-        partners.forEach(p => {
-            if (p.name.toLowerCase().includes(term)) {
-                results.push({ type: 'partner', id: p._id, name: p.name, role: 'שותף' });
-            }
-        });
-        return results;
-    })();
-
-    const getMethodLabel = (method) => {
-        const labels = {
-            'Credit Card': 'אשראי',
-            'Cash': 'מזומן',
-            'Bit': 'ביט',
-            'Paybox': 'פייבוקס',
-            'Bank Transfer': 'העברה בנקאית',
-            'Check': "צ'ק",
-        };
-        return labels[method] || method;
-    };
 
     const toggleEventExpand = (id) => {
         setExpandedEventId(expandedEventId === id ? null : id);
@@ -595,6 +492,66 @@ export default function Events() {
         }
     };
 
+    // ========== Expense Handlers ==========
+    const openExpenseModal = (eventId, expense = null) => {
+        setCurrentEventId(eventId);
+        setExpenseLinkDropdownOpen(false);
+        if (expense) {
+            setIsEditExpenseMode(true);
+            setCurrentExpenseId(expense._id);
+            setExpenseForm({
+                description: expense.description || '',
+                amount: expense.amount || '',
+                currency: expense.currency || 'Shekel',
+                date: expense.date ? expense.date.split('T')[0] : new Date().toISOString().split('T')[0],
+                method: expense.method || 'Credit Card',
+                supplierId: expense.supplierId?._id || expense.supplierId || '',
+                partnerId: expense.partnerId?._id || expense.partnerId || ''
+            });
+            const linkName = expense.supplierId?.name || expense.partnerId?.name || '';
+            setExpenseLinkSearch(linkName);
+        } else {
+            setIsEditExpenseMode(false);
+            setCurrentExpenseId(null);
+            setExpenseForm({ description: '', amount: '', currency: 'Shekel', date: new Date().toISOString().split('T')[0], method: 'Credit Card', supplierId: '', partnerId: '' });
+            setExpenseLinkSearch('');
+        }
+        setIsExpenseModalOpen(true);
+    };
+
+    const handleAddOrUpdateExpense = async (e) => {
+        e.preventDefault();
+        try {
+            const payload = {
+                description: expenseForm.description,
+                amount: parseFloat(expenseForm.amount),
+                currency: expenseForm.currency,
+                date: expenseForm.date,
+                method: expenseForm.method,
+                supplierId: expenseForm.supplierId || null,
+                partnerId: expenseForm.partnerId || null
+            };
+            if (isEditExpenseMode) {
+                await api.put(`/events/${currentEventId}/expenses/${currentExpenseId}`, payload);
+            } else {
+                await api.post(`/events/${currentEventId}/expenses`, payload);
+            }
+            setIsExpenseModalOpen(false);
+            setExpenseForm({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
+            setExpenseLinkSearch('');
+            fetchData();
+        } catch (err) { alert(err.response?.data?.message || 'שגיאה בשמירת הוצאה'); }
+    };
+
+    const handleDeleteExpense = async (eventId, expenseId) => {
+        if (window.confirm('האם אתה בטוח שברצונך למחוק הוצאה זו?')) {
+            try {
+                await api.delete(`/events/${eventId}/expenses/${expenseId}`);
+                fetchData();
+            } catch (err) { console.error(err); }
+        }
+    };
+
     const toggleGcalEventSelection = (eventId) => {
         setGcalSelectedEventIds(prev =>
             prev.includes(eventId)
@@ -622,6 +579,33 @@ export default function Events() {
             setImporting(false);
         }
     };
+
+    const getMethodLabel = (method) => {
+        return PAYMENT_METHODS.find(m => m.value === method)?.label || method || '';
+    };
+
+    const getExpenseLinkName = () => {
+        if (expenseForm.supplierId) {
+            const s = suppliers.find(s => s._id === expenseForm.supplierId);
+            return s ? `${s.name} (ספק)` : 'ספק';
+        }
+        if (expenseForm.partnerId) {
+            const p = partners.find(p => p._id === expenseForm.partnerId);
+            return p ? `${p.name} (שותף)` : 'שותף';
+        }
+        return '';
+    };
+
+    const filteredExpenseLinkEntities = (() => {
+        const search = expenseLinkSearch.toLowerCase();
+        const supplierItems = suppliers
+            .filter(s => !search || s.name.toLowerCase().includes(search) || (s.role || '').toLowerCase().includes(search))
+            .map(s => ({ id: s._id, name: s.name, subtitle: s.role, type: 'supplier' }));
+        const partnerItems = partners
+            .filter(p => !search || p.name.toLowerCase().includes(search))
+            .map(p => ({ id: p._id, name: p.name, subtitle: `שותף ${p.percentage}%`, type: 'partner' }));
+        return [...partnerItems, ...supplierItems];
+    })();
 
     if (loading) return <EventsSkeleton />;
 
@@ -760,14 +744,11 @@ export default function Events() {
                             {group.events.map(ev => {
                                 const isExpanded = expandedEventId === ev._id;
                                 const totalExpectedSuppliersPay = ev.participants ? ev.participants.reduce((sum, p) => sum + (p.expectedPay || 0), 0) : 0;
-                                const eventProfit = ev.totalPrice - totalExpectedSuppliersPay;
-                                // Calculate non-substitute costs for partner profit split
+                                const totalEventExpenses = (ev.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
+                                const eventProfit = ev.totalPrice - totalExpectedSuppliersPay - totalEventExpenses;
+                                // Calculate non-substitute costs for partner profit split (all expenses reduce the pool)
                                 const nonSubstituteCosts = ev.participants ? ev.participants.filter(p => !p.isSubstitute).reduce((sum, p) => sum + (p.expectedPay || 0), 0) : 0;
-                                // Expenses not linked to a specific partner reduce the profit pool
-                                const nonPartnerExpenses = (ev.expenses || [])
-                                    .filter(exp => !exp.partnerId)
-                                    .reduce((sum, exp) => sum + (exp.amount || 0), 0);
-                                const eventProfitForPartners = ev.totalPrice - nonSubstituteCosts - nonPartnerExpenses;
+                                const eventProfitForPartners = ev.totalPrice - nonSubstituteCosts - totalEventExpenses;
 
                                 return (
                                     <div key={ev._id} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -789,9 +770,15 @@ export default function Events() {
                                                     {ev.location && <span className="flex items-center gap-1"><FiMapPin /> {ev.location}</span>}
                                                     {ev.phone_number && <span className="flex items-center gap-1"><FiPhone /> {ev.phone_number}</span>}
                                                     <span className="flex items-center gap-1" title="מחיר ללקוח"><span className="text-slate-300">הכנסה:</span> <span className="text-emerald-400 font-medium">{getCurrencySymbol(ev.currency)}{ev.totalPrice}</span></span>
-                                                    <span className="flex items-center gap-1 bg-slate-700/50 px-2 py-0.5 rounded-lg border border-slate-600/50" title="רווח קופה (הכנסה פחות הוצאות ספקים)">
+                                                    {totalEventExpenses > 0 && (
+                                                        <span className="flex items-center gap-1 bg-orange-500/10 px-2 py-0.5 rounded-lg border border-orange-500/20" title="סך הוצאות האירוע">
+                                                            <span className="text-slate-300">הוצאות:</span>
+                                                            <strong className="text-orange-400">-{getCurrencySymbol(ev.currency)}{totalEventExpenses.toLocaleString()}</strong>
+                                                        </span>
+                                                    )}
+                                                    <span className="flex items-center gap-1 bg-slate-700/50 px-2 py-0.5 rounded-lg border border-slate-600/50" title="רווח קופה (הכנסה פחות ספקים ופחות הוצאות)">
                                                         <span className="text-slate-300">רווח קופה:</span>
-                                                        <strong className={`${eventProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{getCurrencySymbol(ev.currency)}{eventProfit}</strong>
+                                                        <strong className={`${eventProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{getCurrencySymbol(ev.currency)}{eventProfit.toLocaleString()}</strong>
                                                     </span>
                                                 </div>
                                             </div>
@@ -809,6 +796,12 @@ export default function Events() {
                                                     title="מחק אירוע"
                                                 >
                                                     <FiTrash2 size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); openExpenseModal(ev._id); }}
+                                                    className="text-sm bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 px-3 py-1.5 rounded-lg transition border border-orange-500/30"
+                                                >
+                                                    + הוסף הוצאה
                                                 </button>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); openSupplierModal(ev._id); }}
@@ -880,55 +873,61 @@ export default function Events() {
                                                 )}
 
                                                 {/* Expenses Section */}
-                                                {ev.expenses && ev.expenses.length > 0 && (
-                                                    <div className="mt-6 pt-4 border-t border-slate-700">
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <h4 className="font-bold text-amber-300">💰 הוצאות נוספות:</h4>
-                                                            <button
-                                                                onClick={() => openSupplierModal(ev._id)}
-                                                                className="text-blue-400 hover:text-blue-300 text-xs flex items-center gap-1"
-                                                                title="הוסף הוצאה נוספת"
-                                                            >
-                                                                <FiPlus size={14} /> הוסף הוצאה
-                                                            </button>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            {ev.expenses.map(exp => (
-                                                                <div key={exp._id} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700 flex justify-between items-start">
-                                                                    <div className="flex-1">
-                                                                        <p className="font-bold text-slate-100 text-sm">{exp.description}</p>
-                                                                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-                                                                            {exp.date && <span>{new Date(exp.date).toLocaleDateString('he-IL')}</span>}
-                                                                            {exp.method && <span>{getMethodLabel(exp.method)}</span>}
-                                                                        </div>
-                                                                        {(exp.supplierId || exp.partnerId) && (
-                                                                            <p className="text-xs text-amber-400 mt-1">
-                                                                                קשור ל: {exp.supplierId?.name || exp.partnerId?.name}
-                                                                            </p>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="font-bold text-amber-300 whitespace-nowrap">{getCurrencySymbol(exp.currency)}{exp.amount}</span>
-                                                                        <button
-                                                                            onClick={() => openEditExpenseModal(ev._id, exp)}
-                                                                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition"
-                                                                            title="ערוך הוצאה"
-                                                                        >
-                                                                            <FiEdit2 size={14} />
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => handleRemoveExpense(ev._id, exp._id)}
-                                                                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition"
-                                                                            title="הסר הוצאה"
-                                                                        >
-                                                                            <FiTrash2 size={14} />
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                                <div className="mt-6 pt-4 border-t border-slate-700">
+                                                    <div className="flex justify-between items-center mb-3">
+                                                        <h4 className="font-bold text-orange-300">💸 הוצאות האירוע:</h4>
+                                                        <button
+                                                            onClick={() => openExpenseModal(ev._id)}
+                                                            className="text-xs bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 px-3 py-1.5 rounded-lg transition border border-orange-500/30 flex items-center gap-1"
+                                                        >
+                                                            <FiPlus size={12} /> הוסף הוצאה
+                                                        </button>
                                                     </div>
-                                                )}
+                                                    {(!ev.expenses || ev.expenses.length === 0) ? (
+                                                        <p className="text-slate-500 text-sm">טרם נוספו הוצאות לאירוע זה.</p>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            {ev.expenses.map(exp => {
+                                                                const linkedName = exp.supplierId?.name || exp.partnerId?.name;
+                                                                const isPartnerLinked = !!exp.partnerId;
+                                                                const isSupplierLinked = !!exp.supplierId && !exp.partnerId;
+                                                                return (
+                                                                    <div key={exp._id} className="bg-slate-800 p-3 rounded-xl border border-orange-500/20 flex justify-between items-start gap-3">
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <p className="font-medium text-slate-100 text-sm">{exp.description}</p>
+                                                                            <div className="flex flex-wrap gap-2 mt-1 text-xs text-slate-400">
+                                                                                <span>{new Date(exp.date).toLocaleDateString('he-IL')}</span>
+                                                                                <span>•</span>
+                                                                                <span>{getMethodLabel(exp.method)}</span>
+                                                                                {linkedName && (
+                                                                                    <>
+                                                                                        <span>•</span>
+                                                                                        <span className={`flex items-center gap-1 ${isPartnerLinked ? 'text-violet-400' : 'text-cyan-400'}`}>
+                                                                                            <FiLink size={10} />
+                                                                                            {linkedName} {isPartnerLinked ? '(שותף שילם — הלהקה חייבת)' : '(ספק שילם — הלהקה חייבת)'}
+                                                                                        </span>
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                                            <span className="font-bold text-orange-400 text-sm">{getCurrencySymbol(exp.currency || ev.currency)}{(exp.amount || 0).toLocaleString()}</span>
+                                                                            <button onClick={() => openExpenseModal(ev._id, exp)} className="p-1 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition" title="ערוך הוצאה">
+                                                                                <FiEdit2 size={14} />
+                                                                            </button>
+                                                                            <button onClick={() => handleDeleteExpense(ev._id, exp._id)} className="p-1 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition" title="מחק הוצאה">
+                                                                                <FiTrash2 size={14} />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                            <div className="text-right text-sm font-bold text-orange-400 pt-1">
+                                                                סה"כ הוצאות: {getCurrencySymbol(ev.currency)}{totalEventExpenses.toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
 
                                                 {/* Partner Earnings Section */}
                                                 {partners.length > 0 && (
@@ -964,11 +963,11 @@ export default function Events() {
                                                                         substituteDeduction += p.expectedPay || 0;
                                                                     }
                                                                 });
-                                                                // Partner-linked expenses are deducted from this partner's share
+                                                                // Expenses linked to this partner = band owes reimbursement
                                                                 const partnerLinkedExpenses = (ev.expenses || [])
                                                                     .filter(exp => exp.partnerId && (exp.partnerId?._id || exp.partnerId) === partner._id)
                                                                     .reduce((sum, exp) => sum + (exp.amount || 0), 0);
-                                                                const totalPartnerEarning = profitShare + supplierPay - substituteDeduction - partnerLinkedExpenses;
+                                                                const totalPartnerEarning = profitShare + supplierPay - substituteDeduction + partnerLinkedExpenses;
 
                                                                 return (
                                                                     <div key={partner._id} className="bg-slate-800 p-3 rounded-xl border border-violet-500/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
@@ -987,7 +986,7 @@ export default function Events() {
                                                                                 <span>עלות מחליף: <strong className="text-orange-400">-{getCurrencySymbol(ev.currency)}{substituteDeduction}</strong></span>
                                                                             )}
                                                                             {partnerLinkedExpenses > 0 && (
-                                                                                <span>הוצאות מקושרות: <strong className="text-red-400">-{getCurrencySymbol(ev.currency)}{partnerLinkedExpenses}</strong></span>
+                                                                                <span>החזר הוצאות: <strong className="text-cyan-400">+{getCurrencySymbol(ev.currency)}{partnerLinkedExpenses}</strong></span>
                                                                             )}
                                                                             <span className="bg-violet-500/10 px-2 py-0.5 rounded-lg">
                                                                                 סה"כ: <strong className={`${totalPartnerEarning >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{getCurrencySymbol(ev.currency)}{Math.round(totalPartnerEarning)}</strong>
@@ -1125,11 +1124,11 @@ export default function Events() {
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                     <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-2xl font-bold">{isEditSupplierMode ? 'ערוך שכר מסוכם' : 'הוסף נגן/ספק/הוצאה לאירוע'}</h3>
+                            <h3 className="text-2xl font-bold">{isEditSupplierMode ? 'ערוך שכר מסוכם' : 'הוסף נגן/ספק לאירוע'}</h3>
                             {!isEditSupplierMode && (
                                 <button
                                     type="button"
-                                    onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); setJustAddedExpenses([]); setSuppliersModalTab('suppliers'); setExpenseLinkSearch(''); setExpenseLinkDropdownOpen(false); }}
+                                    onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); }}
                                     className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition"
                                 >
                                     ✓ סיום
@@ -1137,26 +1136,8 @@ export default function Events() {
                             )}
                         </div>
 
-                        {/* Tabs */}
-                        {!isEditSupplierMode && (
-                            <div className="flex gap-2 mb-4 border-b border-slate-700">
-                                <button
-                                    onClick={() => setSuppliersModalTab('suppliers')}
-                                    className={`px-4 py-2 font-medium transition ${suppliersModalTab === 'suppliers' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-400 hover:text-slate-300'}`}
-                                >
-                                    🎵 נגנים/ספקים
-                                </button>
-                                <button
-                                    onClick={() => setSuppliersModalTab('expenses')}
-                                    className={`px-4 py-2 font-medium transition ${suppliersModalTab === 'expenses' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-400 hover:text-slate-300'}`}
-                                >
-                                    💰 הוצאות נוספות
-                                </button>
-                            </div>
-                        )}
-
                         {/* Just-added summary */}
-                        {suppliersModalTab === 'suppliers' && justAddedSuppliers.length > 0 && (
+                        {justAddedSuppliers.length > 0 && (
                             <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
                                 <p className="text-xs font-semibold text-emerald-400 mb-2">✓ נוספו לאירוע ({justAddedSuppliers.length}):</p>
                                 <div className="space-y-1">
@@ -1170,21 +1151,6 @@ export default function Events() {
                             </div>
                         )}
 
-                        {suppliersModalTab === 'expenses' && justAddedExpenses.length > 0 && (
-                            <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
-                                <p className="text-xs font-semibold text-emerald-400 mb-2">✓ נוספו לאירוע ({justAddedExpenses.length}):</p>
-                                <div className="space-y-1">
-                                    {justAddedExpenses.map((e, i) => (
-                                        <div key={i} className="flex justify-between text-xs text-emerald-300">
-                                            <span>{e.description} {e.linkedTo ? `(${e.linkedTo})` : '(בתקציב)'}</span>
-                                            <span className="font-bold">{getCurrencySymbol(e.currency)}{e.amount}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {suppliersModalTab === 'suppliers' && (
                         <form onSubmit={handleAddOrUpdateSupplierToEvent} className="space-y-4">
                             {!isEditSupplierMode && (
                                 <div>
@@ -1291,7 +1257,7 @@ export default function Events() {
                                     </>
                                 ) : (
                                     <>
-                                        <button type="button" onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); setJustAddedExpenses([]); setExpenseLinkSearch(''); setExpenseLinkDropdownOpen(false); }} className="px-4 py-2 text-slate-400 hover:text-slate-200 transition">ביטול</button>
+                                        <button type="button" onClick={() => { setIsSupplierModalOpen(false); setJustAddedSuppliers([]); }} className="px-4 py-2 text-slate-400 hover:text-slate-200 transition">ביטול</button>
                                         <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium flex items-center gap-2">
                                             + הוסף
                                         </button>
@@ -1299,27 +1265,28 @@ export default function Events() {
                                 )}
                             </div>
                         </form>
-                        )}
+                    </div>
+                </div>
+            )}
 
-                        {suppliersModalTab === 'expenses' && (
+            {/* EXPENSE MODAL */}
+            {isExpenseModalOpen && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                    <div className="bg-slate-800 p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-xl font-bold mb-4 text-orange-300">{isEditExpenseMode ? '✏️ ערוך הוצאה' : '💸 הוסף הוצאה לאירוע'}</h3>
                         <form onSubmit={handleAddOrUpdateExpense} className="space-y-4">
-                            <div className="flex items-center justify-between mb-2">
-                                <h4 className="font-bold text-slate-100">{isEditingExpense ? 'ערוך הוצאה' : 'הוסף הוצאה חדשה'}</h4>
-                            </div>
-
                             <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1">תיאור הוצאה</label>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">תיאור ההוצאה</label>
                                 <input
                                     required
                                     type="text"
+                                    placeholder="לדוגמה: כרטיסי טיסה, אוכל, ציוד..."
                                     value={expenseForm.description}
                                     onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })}
-                                    placeholder="למשל: כרטיסי טיסה, אוכל, הדפסה וכו'"
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500"
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-orange-500"
                                 />
                             </div>
-
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">סכום</label>
                                     <input
@@ -1329,59 +1296,51 @@ export default function Events() {
                                         step="0.01"
                                         value={expenseForm.amount}
                                         onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500"
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-orange-500"
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">מטבע</label>
-                                    <select
-                                        value={expenseForm.currency}
-                                        onChange={e => setExpenseForm({ ...expenseForm, currency: e.target.value })}
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100"
-                                    >
-                                        <option value="Shekel">₪</option>
-                                        <option value="Dollar">$</option>
-                                        <option value="Euro">€</option>
+                                    <select value={expenseForm.currency} onChange={e => setExpenseForm({ ...expenseForm, currency: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100">
+                                        <option value="Shekel">שקל (₪)</option>
+                                        <option value="Dollar">דולר ($)</option>
+                                        <option value="Euro">יורו (€)</option>
                                     </select>
                                 </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-400 mb-1">תאריך</label>
                                     <input
+                                        required
                                         type="date"
                                         value={expenseForm.date}
                                         onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })}
-                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100"
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-orange-500"
                                     />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-400 mb-1">אמצעי תשלום</label>
+                                    <select value={expenseForm.method} onChange={e => setExpenseForm({ ...expenseForm, method: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100">
+                                        {PAYMENT_METHODS.map(m => (
+                                            <option key={m.value} value={m.value}>{m.label}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
 
+                            {/* Link to supplier/partner (optional) */}
                             <div>
-                                <label className="block text-sm font-medium text-slate-400 mb-1">איך שולם</label>
-                                <select
-                                    value={expenseForm.method}
-                                    onChange={e => setExpenseForm({ ...expenseForm, method: e.target.value })}
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100"
-                                >
-                                    <option value="Credit Card">כרטיס אשראי</option>
-                                    <option value="Cash">מזומן</option>
-                                    <option value="Bit">ביט</option>
-                                    <option value="Paybox">פייבוקס</option>
-                                    <option value="Bank Transfer">העברה בנקאית</option>
-                                    <option value="Check">צ'ק</option>
-                                </select>
-                            </div>
-
-                            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
-                                <p className="text-xs font-medium text-slate-400 mb-3 flex items-center gap-1">
-                                    <FiLink size={12} /> קישור לספק/שותף (אופציונלי)
-                                </p>
+                                <label className="block text-sm font-medium text-slate-400 mb-1">
+                                    קישור לספק/שותף <span className="text-slate-500 font-normal">(אופציונלי — מי שילם מכספו)</span>
+                                </label>
                                 {(expenseForm.supplierId || expenseForm.partnerId) ? (
                                     <div className="flex items-center gap-2 bg-cyan-500/10 border border-cyan-500/30 rounded-xl px-4 py-2.5">
                                         <FiLink size={14} className="text-cyan-400 flex-shrink-0" />
                                         <span className="text-cyan-300 text-sm font-medium flex-grow">{getExpenseLinkName()}</span>
                                         <button
                                             type="button"
-                                            onClick={() => setExpenseForm({ ...expenseForm, supplierId: '', partnerId: '' })}
+                                            onClick={() => { setExpenseForm({ ...expenseForm, supplierId: '', partnerId: '' }); setExpenseLinkSearch(''); }}
                                             className="p-1 text-slate-400 hover:text-red-400 transition"
                                         >
                                             <FiX size={16} />
@@ -1392,11 +1351,12 @@ export default function Events() {
                                         <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                         <input
                                             type="text"
+                                            placeholder="חפש שותף או ספק..."
                                             value={expenseLinkSearch}
                                             onChange={e => { setExpenseLinkSearch(e.target.value); setExpenseLinkDropdownOpen(true); }}
                                             onFocus={() => setExpenseLinkDropdownOpen(true)}
-                                            className="w-full bg-slate-800 border border-slate-600 rounded-xl pr-9 pl-4 py-2.5 text-slate-100 focus:outline-none focus:border-cyan-500 transition text-sm"
-                                            placeholder="חפש ספק או שותף לקישור..."
+                                            onBlur={() => setTimeout(() => setExpenseLinkDropdownOpen(false), 200)}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl pr-9 pl-4 py-2.5 text-slate-100 focus:outline-none focus:border-cyan-500 text-sm"
                                         />
                                         {expenseLinkDropdownOpen && filteredExpenseLinkEntities.length > 0 && (
                                             <div className="absolute top-full mt-1 left-0 right-0 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-h-48 overflow-y-auto z-50">
@@ -1404,7 +1364,7 @@ export default function Events() {
                                                     <button
                                                         key={`${ent.type}-${ent.id}`}
                                                         type="button"
-                                                        onClick={() => {
+                                                        onMouseDown={() => {
                                                             if (ent.type === 'supplier') {
                                                                 setExpenseForm({ ...expenseForm, supplierId: ent.id, partnerId: '' });
                                                             } else {
@@ -1413,14 +1373,14 @@ export default function Events() {
                                                             setExpenseLinkSearch('');
                                                             setExpenseLinkDropdownOpen(false);
                                                         }}
-                                                        className="w-full text-right px-4 py-2.5 hover:bg-slate-800 transition flex items-center gap-2 border-b border-slate-800 last:border-0"
+                                                        className="w-full text-right px-4 py-2.5 hover:bg-slate-800 transition flex items-center justify-between gap-2"
                                                     >
-                                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${ent.type === 'partner' ? 'bg-gradient-to-br from-violet-500 to-purple-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>
-                                                            {ent.name.charAt(0)}
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <p className="text-sm font-medium text-slate-200">{ent.name}</p>
-                                                            <p className="text-xs text-slate-500">{ent.role}</p>
+                                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ent.type === 'partner' ? 'bg-violet-500/20 text-violet-400' : 'bg-cyan-500/20 text-cyan-400'}`}>
+                                                            {ent.type === 'partner' ? 'שותף' : 'ספק'}
+                                                        </span>
+                                                        <div className="text-right flex-1">
+                                                            <p className="text-sm font-medium text-slate-100">{ent.name}</p>
+                                                            <p className="text-xs text-slate-400">{ent.subtitle}</p>
                                                         </div>
                                                     </button>
                                                 ))}
@@ -1428,31 +1388,27 @@ export default function Events() {
                                         )}
                                     </div>
                                 )}
-                                <p className="text-xs text-slate-500 mt-2">ללא קישור = הוצאה כללית של הלהקה</p>
+                                {(expenseForm.supplierId || expenseForm.partnerId) && (
+                                    <p className="text-xs text-cyan-400 mt-1">הלהקה חייבת החזר להם על הסכום ששולם</p>
+                                )}
+                                {!expenseForm.supplierId && !expenseForm.partnerId && (
+                                    <p className="text-xs text-slate-500 mt-1">ללא קישור = שולם ע"י חשבון הלהקה, יופיע בהוצאות הכלליות בתקציב</p>
+                                )}
                             </div>
 
                             <div className="flex justify-end gap-3 mt-4">
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        setIsSupplierModalOpen(false);
-                                        setJustAddedExpenses([]);
-                                        setIsEditingExpense(false);
-                                        setEditingExpenseId(null);
-                                        setExpenseForm({ description: '', amount: '', currency: 'Shekel', date: '', method: 'Credit Card', supplierId: '', partnerId: '' });
-                                        setExpenseLinkSearch('');
-                                        setExpenseLinkDropdownOpen(false);
-                                    }}
+                                    onClick={() => { setIsExpenseModalOpen(false); setExpenseLinkSearch(''); setExpenseLinkDropdownOpen(false); }}
                                     className="px-4 py-2 text-slate-400 hover:text-slate-200 transition"
                                 >
                                     ביטול
                                 </button>
-                                <button type="submit" className="px-6 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white font-medium flex items-center gap-2">
-                                    {isEditingExpense ? '✓ שמור' : '+ הוסף הוצאה'}
+                                <button type="submit" className="px-6 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg text-white font-medium transition">
+                                    {isEditExpenseMode ? 'שמור שינויים' : '+ הוסף הוצאה'}
                                 </button>
                             </div>
                         </form>
-                        )}
                     </div>
                 </div>
             )}
