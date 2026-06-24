@@ -104,17 +104,6 @@ export default function Payments() {
             );
             const totalBandExpense = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-            // Event expenses linked to this supplier
-            const eventExpenses = [];
-            events.forEach(ev => {
-                (ev.expenses || []).forEach(exp => {
-                    if (exp.supplierId && (exp.supplierId?._id || exp.supplierId)?.toString() === sId) {
-                        eventExpenses.push(exp);
-                    }
-                });
-            });
-            const linkedEventExpenses = eventExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-
             const totalPaid = { Shekel: 0, Dollar: 0, Euro: 0 };
             const totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 };
             const entityPayments = payments.filter(pay => (pay.supplierId?._id || pay.supplierId)?.toString() === sId);
@@ -127,7 +116,7 @@ export default function Payments() {
                 }
             });
             const balance = {
-                Shekel: totalExpected.Shekel + totalBandExpense + linkedEventExpenses + totalDebt.Shekel - totalPaid.Shekel,
+                Shekel: totalExpected.Shekel + totalBandExpense + totalDebt.Shekel - totalPaid.Shekel,
                 Dollar: totalExpected.Dollar + totalDebt.Dollar - totalPaid.Dollar,
                 Euro: totalExpected.Euro + totalDebt.Euro - totalPaid.Euro,
             };
@@ -135,7 +124,7 @@ export default function Payments() {
                 entity: { ...s, displayRole: s.role },
                 type: 'supplier', id: s._id,
                 totalExpected, totalPaid, totalDebt, balance, entityPayments,
-                totalBandExpense, linkedExpenses, linkedEventExpenses: eventExpenses,
+                totalBandExpense, linkedExpenses,
                 hasDebt: Object.values(balance).some(v => v > 0),
                 hasCredit: Object.values(balance).some(v => v < 0),
                 budgetDeduction: 0,
@@ -160,13 +149,7 @@ export default function Payments() {
             const eventSupplierCosts = (ev.participants || [])
                 .filter(part => !part.isSubstitute && (part.currency || 'Shekel') === evCurrency)
                 .reduce((sum, part) => sum + (part.expectedPay || 0), 0);
-
-            // Unlinked expenses reduce the profit pool
-            const unlinkedExpenses = (ev.expenses || [])
-                .filter(exp => !exp.partnerId && (exp.currency || 'Shekel') === evCurrency)
-                .reduce((sum, exp) => sum + (exp.amount || 0), 0);
-
-            const eventProfit = (ev.totalPrice || 0) - eventSupplierCosts - unlinkedExpenses;
+            const eventProfit = (ev.totalPrice || 0) - eventSupplierCosts;
             let effectivePercentage = p.percentage;
             if (ev.customPartners) {
                 const participatingPartnerIds = ev.participatingPartners || [];
@@ -209,17 +192,6 @@ export default function Payments() {
         });
         const totalBandExpense = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-        // Event expenses linked to this partner
-        const eventExpenses = [];
-        events.forEach(ev => {
-            (ev.expenses || []).forEach(exp => {
-                if (exp.partnerId && (exp.partnerId?._id || exp.partnerId)?.toString() === p._id.toString()) {
-                    eventExpenses.push(exp);
-                }
-            });
-        });
-        const linkedEventExpenses = eventExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-
         const eventEarnings = { ...totalExpected };
         const budgetDeduction = budgetDeductionMap[p._id] || 0;
 
@@ -240,7 +212,7 @@ export default function Payments() {
         });
 
         const balance = {
-            Shekel: eventEarnings.Shekel + totalBandExpense - linkedEventExpenses + totalDebt.Shekel - budgetDeduction - totalPaid.Shekel,
+            Shekel: eventEarnings.Shekel + totalBandExpense + totalDebt.Shekel - budgetDeduction - totalPaid.Shekel,
             Dollar: eventEarnings.Dollar + totalDebt.Dollar - totalPaid.Dollar,
             Euro: eventEarnings.Euro + totalDebt.Euro - totalPaid.Euro,
         };
@@ -250,7 +222,7 @@ export default function Payments() {
             type: 'partner', id: p._id,
             totalExpected: eventEarnings,
             totalPaid, totalDebt, balance, entityPayments,
-            totalBandExpense, linkedExpenses, linkedEventExpenses: eventExpenses,
+            totalBandExpense, linkedExpenses,
             hasDebt: Object.values(balance).some(v => v > 0),
             hasCredit: Object.values(balance).some(v => v < 0),
             budgetDeduction,
@@ -407,10 +379,7 @@ export default function Payments() {
                     {allBalances.length > 0 && (() => {
                         const totalOwed = allBalances.reduce((sum, { balance }) => sum + Math.max(0, balance.Shekel), 0);
                         const totalPaidS = allBalances.reduce((sum, { totalPaid }) => sum + totalPaid.Shekel, 0);
-                        const totalExpectedS = allBalances.reduce((sum, { totalExpected, totalBandExpense, linkedEventExpenses = [] }) => {
-                            const eventExpensesSum = linkedEventExpenses.reduce((s, e) => s + (e.amount || 0), 0);
-                            return sum + totalExpected.Shekel + totalBandExpense + eventExpensesSum;
-                        }, 0);
+                        const totalExpectedS = allBalances.reduce((sum, { totalExpected, totalBandExpense }) => sum + totalExpected.Shekel + totalBandExpense, 0);
                         return (
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
@@ -505,28 +474,20 @@ export default function Payments() {
                                         <div className="border-t border-slate-700 bg-slate-900/50">
                                             {currencies.length > 0 && (
                                                 <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 border-b border-slate-700/50">
-                                                    {currencies.map(cur => {
-                                                        const eventExpensesSum = (linkedEventExpenses || []).reduce((s, e) => s + (e.amount || 0), 0);
-                                                        return (
-                                                            <div key={cur} className="text-sm space-y-1 bg-slate-800/60 rounded-xl p-3">
-                                                                <p className="text-xs text-slate-500 font-medium mb-2">{cur === 'Shekel' ? '₪ שקל' : cur === 'Dollar' ? '$ דולר' : '€ יורו'}</p>
+                                                    {currencies.map(cur => (
+                                                        <div key={cur} className="text-sm space-y-1 bg-slate-800/60 rounded-xl p-3">
+                                                            <p className="text-xs text-slate-500 font-medium mb-2">{cur === 'Shekel' ? '₪ שקל' : cur === 'Dollar' ? '$ דולר' : '€ יורו'}</p>
+                                                            <div className="flex justify-between">
+                                                                <span className="text-slate-400">רווח מאירועים</span>
+                                                                <span className="text-blue-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalExpected[cur]).toLocaleString()}</span>
+                                                            </div>
+                                                            {cur === 'Shekel' && totalBandExpense > 0 && (
                                                                 <div className="flex justify-between">
-                                                                    <span className="text-slate-400">רווח מאירועים</span>
-                                                                    <span className="text-blue-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(totalExpected[cur]).toLocaleString()}</span>
+                                                                    <span className="text-slate-400 flex items-center gap-1"><FiLink size={10} /> הוצאות להקה מקושרות</span>
+                                                                    <span className="text-cyan-400 font-semibold">₪{Math.round(totalBandExpense).toLocaleString()}</span>
                                                                 </div>
-                                                                {cur === 'Shekel' && totalBandExpense > 0 && (
-                                                                    <div className="flex justify-between">
-                                                                        <span className="text-slate-400 flex items-center gap-1"><FiLink size={10} /> הוצאות להקה מקושרות</span>
-                                                                        <span className="text-cyan-400 font-semibold">₪{Math.round(totalBandExpense).toLocaleString()}</span>
-                                                                    </div>
-                                                                )}
-                                                                {cur === 'Shekel' && eventExpensesSum > 0 && (
-                                                                    <div className="flex justify-between">
-                                                                        <span className="text-slate-400 flex items-center gap-1"><FiLink size={10} /> הוצאות מאירוע</span>
-                                                                        <span className="text-orange-400 font-semibold">₪{Math.round(eventExpensesSum).toLocaleString()}</span>
-                                                                    </div>
-                                                                )}
-                                                                {type === 'partner' && cur === 'Shekel' && budgetDeduction > 0 && (
+                                                            )}
+                                                            {type === 'partner' && cur === 'Shekel' && budgetDeduction > 0 && (
                                                                 <div className="flex justify-between">
                                                                     <span className="text-slate-400 text-xs">הפחתת תקציב</span>
                                                                     <span className="text-orange-400 font-semibold">-₪{Math.round(budgetDeduction).toLocaleString()}</span>
@@ -548,9 +509,8 @@ export default function Payments() {
                                                                     {getCurrencySymbol(cur)}{Math.round(Math.abs(balance[cur])).toLocaleString()}
                                                                 </span>
                                                             </div>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             )}
 
