@@ -104,11 +104,11 @@ export default function SupplierReport() {
         </div>
     );
 
-    const { supplier, events, payments, totalExpected, totalPaid, totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 }, linkedBandExpenses = [], totalBandExpenses = { Shekel: 0 } } = report;
+    const { supplier, events, payments, totalExpected, totalPaid, totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 }, linkedBandExpenses = [], totalBandExpenses = { Shekel: 0 }, linkedEventExpenses = [], totalEventExpenseReimbursements = { Shekel: 0, Dollar: 0, Euro: 0 } } = report;
     const balance = {
-        Shekel: totalExpected.Shekel + (totalBandExpenses.Shekel || 0) + (totalDebt.Shekel || 0) - totalPaid.Shekel,
-        Dollar: totalExpected.Dollar + (totalDebt.Dollar || 0) - totalPaid.Dollar,
-        Euro: totalExpected.Euro + (totalDebt.Euro || 0) - totalPaid.Euro,
+        Shekel: totalExpected.Shekel + (totalBandExpenses.Shekel || 0) + (totalEventExpenseReimbursements.Shekel || 0) + (totalDebt.Shekel || 0) - totalPaid.Shekel,
+        Dollar: totalExpected.Dollar + (totalEventExpenseReimbursements.Dollar || 0) + (totalDebt.Dollar || 0) - totalPaid.Dollar,
+        Euro: totalExpected.Euro + (totalEventExpenseReimbursements.Euro || 0) + (totalDebt.Euro || 0) - totalPaid.Euro,
     };
 
     return (
@@ -204,7 +204,7 @@ export default function SupplierReport() {
                 {/* Balance Summary */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {['Shekel', 'Dollar', 'Euro'].map(cur => (
-                        (totalExpected[cur] > 0 || totalPaid[cur] > 0 || (totalDebt[cur] || 0) > 0 || (cur === 'Shekel' && (totalBandExpenses.Shekel || 0) > 0)) && (
+                        (totalExpected[cur] > 0 || totalPaid[cur] > 0 || (totalDebt[cur] || 0) > 0 || (cur === 'Shekel' && (totalBandExpenses.Shekel || 0) > 0) || (totalEventExpenseReimbursements[cur] || 0) > 0) && (
                             <div key={cur} className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
                                 <p className="text-xs text-slate-500 mb-3 font-medium">{cur === 'Shekel' ? 'שקל ₪' : cur === 'Dollar' ? 'דולר $' : 'יורו €'}</p>
                                 <div className="space-y-1.5 text-sm">
@@ -216,6 +216,12 @@ export default function SupplierReport() {
                                         <div className="flex justify-between">
                                             <span className="text-slate-400 text-xs flex items-center gap-1"><FiLink size={9} /> הוצאות להקה</span>
                                             <span className="text-cyan-400 font-bold">₪{(totalBandExpenses.Shekel || 0).toLocaleString()}</span>
+                                        </div>
+                                    )}
+                                    {(totalEventExpenseReimbursements[cur] || 0) > 0 && (
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400 text-xs flex items-center gap-1"><FiLink size={9} /> החזר הוצאות אירועים</span>
+                                            <span className="text-violet-400 font-bold">{getCurrencySymbol(cur)}{(totalEventExpenseReimbursements[cur] || 0).toLocaleString()}</span>
                                         </div>
                                     )}
                                     {(totalDebt[cur] || 0) > 0 && (
@@ -255,6 +261,30 @@ export default function SupplierReport() {
                                         <p className="text-xs text-slate-500 mt-1">{new Date(exp.date).toLocaleDateString('he-IL')}</p>
                                     </div>
                                     <span className="text-cyan-400 font-bold">₪{exp.amount.toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Linked Event Expenses (reimbursements) */}
+                {linkedEventExpenses.length > 0 && (
+                    <div className="bg-slate-800 rounded-2xl border border-violet-500/20 overflow-hidden">
+                        <div className="p-4 border-b border-slate-700 flex items-center gap-2">
+                            <FiLink className="text-violet-400" />
+                            <h2 className="font-bold text-slate-100">החזר הוצאות מאירועים ({linkedEventExpenses.length})</h2>
+                        </div>
+                        <div className="divide-y divide-slate-700">
+                            {linkedEventExpenses.map(exp => (
+                                <div key={exp._id} className="p-4 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-medium text-slate-100">{exp.description}</p>
+                                        <p className="text-xs text-slate-500 mt-1">
+                                            {exp.eventTitle && `${exp.eventTitle} • `}
+                                            {new Date(exp.date).toLocaleDateString('he-IL')}
+                                        </p>
+                                    </div>
+                                    <span className="text-violet-400 font-bold">{getCurrencySymbol(exp.currency || 'Shekel')}{exp.amount.toLocaleString()}</span>
                                 </div>
                             ))}
                         </div>
@@ -486,7 +516,7 @@ export default function SupplierReport() {
                     );
                 })}
 
-                {events.length === 0 && payments.length === 0 && linkedBandExpenses.length === 0 && (
+                {events.length === 0 && payments.length === 0 && linkedBandExpenses.length === 0 && linkedEventExpenses.length === 0 && (
                     <div className="text-center text-slate-500 py-10">אין נתונים להצגה עדיין.</div>
                 )}
 

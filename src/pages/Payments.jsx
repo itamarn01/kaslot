@@ -104,6 +104,20 @@ export default function Payments() {
             );
             const totalBandExpense = linkedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
+            // Event expenses linked to this supplier (reimbursements)
+            const linkedEventExpensesList = [];
+            const eventExpenseReimbursements = { Shekel: 0, Dollar: 0, Euro: 0 };
+            events.forEach(ev => {
+                (ev.expenses || []).forEach(exp => {
+                    const expSupplierId = (exp.supplierId?._id || exp.supplierId)?.toString();
+                    if (expSupplierId === sId) {
+                        const expCur = exp.currency || 'Shekel';
+                        eventExpenseReimbursements[expCur] += exp.amount || 0;
+                        linkedEventExpensesList.push({ ...exp, eventTitle: ev.title });
+                    }
+                });
+            });
+
             const totalPaid = { Shekel: 0, Dollar: 0, Euro: 0 };
             const totalDebt = { Shekel: 0, Dollar: 0, Euro: 0 };
             const entityPayments = payments.filter(pay => (pay.supplierId?._id || pay.supplierId)?.toString() === sId);
@@ -116,15 +130,16 @@ export default function Payments() {
                 }
             });
             const balance = {
-                Shekel: totalExpected.Shekel + totalBandExpense + totalDebt.Shekel - totalPaid.Shekel,
-                Dollar: totalExpected.Dollar + totalDebt.Dollar - totalPaid.Dollar,
-                Euro: totalExpected.Euro + totalDebt.Euro - totalPaid.Euro,
+                Shekel: totalExpected.Shekel + totalBandExpense + eventExpenseReimbursements.Shekel + totalDebt.Shekel - totalPaid.Shekel,
+                Dollar: totalExpected.Dollar + eventExpenseReimbursements.Dollar + totalDebt.Dollar - totalPaid.Dollar,
+                Euro: totalExpected.Euro + eventExpenseReimbursements.Euro + totalDebt.Euro - totalPaid.Euro,
             };
             return {
                 entity: { ...s, displayRole: s.role },
                 type: 'supplier', id: s._id,
                 totalExpected, totalPaid, totalDebt, balance, entityPayments,
                 totalBandExpense, linkedExpenses,
+                eventExpenseReimbursements, linkedEventExpensesList,
                 hasDebt: Object.values(balance).some(v => v > 0),
                 hasCredit: Object.values(balance).some(v => v < 0),
                 budgetDeduction: 0,
@@ -143,13 +158,16 @@ export default function Payments() {
     const partnerBalances = partners.map(p => {
         const totalExpected = { Shekel: 0, Dollar: 0, Euro: 0 };
         const linkedIds = p.linkedSupplierIds ? p.linkedSupplierIds.map(s => (s._id || s).toString()) : [];
+        const eventExpenseReimbursements = { Shekel: 0, Dollar: 0, Euro: 0 };
+        const linkedEventExpensesList = [];
 
         events.forEach(ev => {
             const evCurrency = ev.currency || 'Shekel';
             const eventSupplierCosts = (ev.participants || [])
                 .filter(part => !part.isSubstitute && (part.currency || 'Shekel') === evCurrency)
                 .reduce((sum, part) => sum + (part.expectedPay || 0), 0);
-            const eventProfit = (ev.totalPrice || 0) - eventSupplierCosts;
+            const totalEvExpenses = (ev.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
+            const eventProfit = (ev.totalPrice || 0) - eventSupplierCosts - totalEvExpenses;
             let effectivePercentage = p.percentage;
             if (ev.customPartners) {
                 const participatingPartnerIds = ev.participatingPartners || [];
@@ -178,6 +196,16 @@ export default function Payments() {
                 const rId = (part.replacesPartnerId?._id || part.replacesPartnerId)?.toString();
                 if (part.isSubstitute && rId && rId === p._id.toString()) {
                     totalExpected[part.currency || 'Shekel'] -= part.expectedPay || 0;
+                }
+            });
+
+            // Partner-linked event expenses (paid from pocket → band owes reimbursement)
+            (ev.expenses || []).forEach(exp => {
+                const expPartnerId = (exp.partnerId?._id || exp.partnerId)?.toString();
+                if (expPartnerId === p._id.toString()) {
+                    const expCur = exp.currency || 'Shekel';
+                    eventExpenseReimbursements[expCur] += exp.amount || 0;
+                    linkedEventExpensesList.push({ ...exp, eventTitle: ev.title });
                 }
             });
         });
@@ -212,9 +240,9 @@ export default function Payments() {
         });
 
         const balance = {
-            Shekel: eventEarnings.Shekel + totalBandExpense + totalDebt.Shekel - budgetDeduction - totalPaid.Shekel,
-            Dollar: eventEarnings.Dollar + totalDebt.Dollar - totalPaid.Dollar,
-            Euro: eventEarnings.Euro + totalDebt.Euro - totalPaid.Euro,
+            Shekel: eventEarnings.Shekel + totalBandExpense + eventExpenseReimbursements.Shekel + totalDebt.Shekel - budgetDeduction - totalPaid.Shekel,
+            Dollar: eventEarnings.Dollar + eventExpenseReimbursements.Dollar + totalDebt.Dollar - totalPaid.Dollar,
+            Euro: eventEarnings.Euro + eventExpenseReimbursements.Euro + totalDebt.Euro - totalPaid.Euro,
         };
 
         return {
@@ -223,6 +251,7 @@ export default function Payments() {
             totalExpected: eventEarnings,
             totalPaid, totalDebt, balance, entityPayments,
             totalBandExpense, linkedExpenses,
+            eventExpenseReimbursements, linkedEventExpensesList,
             hasDebt: Object.values(balance).some(v => v > 0),
             hasCredit: Object.values(balance).some(v => v < 0),
             budgetDeduction,
@@ -422,9 +451,9 @@ export default function Payments() {
                         {filteredBalances.length === 0 && (
                             <p className="text-center text-slate-500 py-16">לא נמצאו שותפים או ספקים.</p>
                         )}
-                        {filteredBalances.map(({ entity, type, id, totalExpected, totalPaid, totalDebt, balance, entityPayments, hasDebt, budgetDeduction, totalBandExpense, linkedExpenses }) => {
+                        {filteredBalances.map(({ entity, type, id, totalExpected, totalPaid, totalDebt, balance, entityPayments, hasDebt, budgetDeduction, totalBandExpense, linkedExpenses, eventExpenseReimbursements, linkedEventExpensesList }) => {
                             const isExpanded = expandedEntityId === id;
-                            const currencies = ['Shekel', 'Dollar', 'Euro'].filter(c => totalExpected[c] > 0 || totalPaid[c] > 0 || (totalDebt[c] || 0) > 0 || (c === 'Shekel' && totalBandExpense > 0));
+                            const currencies = ['Shekel', 'Dollar', 'Euro'].filter(c => totalExpected[c] > 0 || totalPaid[c] > 0 || (totalDebt[c] || 0) > 0 || (c === 'Shekel' && totalBandExpense > 0) || (eventExpenseReimbursements?.[c] || 0) > 0);
                             return (
                                 <div key={id} className={`bg-slate-800 rounded-2xl border overflow-hidden transition-all ${hasDebt ? 'border-red-500/30' : 'border-slate-700'}`}>
                                     <div
@@ -487,6 +516,12 @@ export default function Payments() {
                                                                     <span className="text-cyan-400 font-semibold">₪{Math.round(totalBandExpense).toLocaleString()}</span>
                                                                 </div>
                                                             )}
+                                                            {(eventExpenseReimbursements?.[cur] || 0) > 0 && (
+                                                                <div className="flex justify-between">
+                                                                    <span className="text-slate-400 flex items-center gap-1"><FiLink size={10} /> החזר הוצאות אירועים</span>
+                                                                    <span className="text-violet-400 font-semibold">{getCurrencySymbol(cur)}{Math.round(eventExpenseReimbursements[cur]).toLocaleString()}</span>
+                                                                </div>
+                                                            )}
                                                             {type === 'partner' && cur === 'Shekel' && budgetDeduction > 0 && (
                                                                 <div className="flex justify-between">
                                                                     <span className="text-slate-400 text-xs">הפחתת תקציב</span>
@@ -528,6 +563,29 @@ export default function Payments() {
                                                                     <p className="text-xs text-slate-500">{new Date(exp.date).toLocaleDateString('he-IL')}</p>
                                                                 </div>
                                                                 <span className="text-cyan-400 font-bold">₪{exp.amount.toLocaleString()}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Linked event expenses section */}
+                                            {linkedEventExpensesList && linkedEventExpensesList.length > 0 && (
+                                                <div className="p-4 border-b border-slate-700/50">
+                                                    <p className="text-xs text-slate-500 font-medium mb-3 flex items-center gap-1">
+                                                        <FiLink size={12} /> החזר הוצאות מאירועים
+                                                    </p>
+                                                    <div className="space-y-2">
+                                                        {linkedEventExpensesList.map((exp, idx) => (
+                                                            <div key={exp._id?.toString() || idx} className="flex justify-between items-center bg-slate-800 px-3 py-2.5 rounded-lg border border-violet-500/20">
+                                                                <div>
+                                                                    <p className="text-sm font-medium text-slate-200">{exp.description}</p>
+                                                                    <p className="text-xs text-slate-500">
+                                                                        {exp.eventTitle && `${exp.eventTitle} • `}
+                                                                        {new Date(exp.date).toLocaleDateString('he-IL')}
+                                                                    </p>
+                                                                </div>
+                                                                <span className="text-violet-400 font-bold">{getCurrencySymbol(exp.currency || 'Shekel')}{(exp.amount || 0).toLocaleString()}</span>
                                                             </div>
                                                         ))}
                                                     </div>
