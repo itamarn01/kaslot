@@ -640,6 +640,12 @@ export default function Events() {
 
     const groupedEvents = groupEventsByMonth(filteredEvents);
 
+    // End of today — events after this are a planning projection, excluded from reports and balances
+    const eventsTodayEnd = (() => {
+        const n = new Date();
+        return new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999);
+    })();
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -743,6 +749,8 @@ export default function Events() {
                         <div className="space-y-4">
                             {group.events.map(ev => {
                                 const isExpanded = expandedEventId === ev._id;
+                                // Future events are a planning projection only — excluded from reports/balances until their date
+                                const isFutureEvent = new Date(ev.date) > eventsTodayEnd;
                                 const totalExpectedSuppliersPay = ev.participants ? ev.participants.reduce((sum, p) => sum + (p.expectedPay || 0), 0) : 0;
                                 const totalEventExpenses = (ev.expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
                                 const eventProfit = ev.totalPrice - totalExpectedSuppliersPay - totalEventExpenses;
@@ -759,6 +767,14 @@ export default function Events() {
                                             <div>
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <h3 className="text-xl font-bold text-slate-100">{ev.title}</h3>
+                                                    {isFutureEvent && (
+                                                        <span
+                                                            className="flex items-center gap-1 text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 font-medium"
+                                                            title="אירוע עתידי — התחזית מוצגת כאן בלבד ואינה נכנסת לדוחות, ליתרות ולתקציב עד שיגיע התאריך"
+                                                        >
+                                                            🔮 עתידי — לא בדוחות
+                                                        </span>
+                                                    )}
                                                     {ev.fromGoogleCalendar && (
                                                         <span className="flex items-center gap-1 text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/20 font-medium">
                                                             📅 יומן Google

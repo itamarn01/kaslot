@@ -83,12 +83,16 @@ export default function Payments() {
 
     const allLinkedSupplierIds = new Set(partners.flatMap(p => p.linkedSupplierIds ? p.linkedSupplierIds.map(s => s._id || s) : []));
 
+    // Future events are planning-only: they must not create balances until their date arrives
+    const todayEnd = (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999); })();
+    const pastEvents = events.filter(ev => new Date(ev.date) <= todayEnd);
+
     // Build per-supplier balance (only suppliers NOT linked to any partner)
     const supplierBalances = suppliers
         .filter(s => !allLinkedSupplierIds.has(s._id))
         .map(s => {
             const totalExpected = { Shekel: 0, Dollar: 0, Euro: 0 };
-            events.forEach(ev => {
+            pastEvents.forEach(ev => {
                 ev.participants?.forEach(p => {
                     if (p.supplierId === s._id || p.supplierId?._id === s._id) {
                         const cur = p.currency || 'Shekel';
@@ -107,7 +111,7 @@ export default function Payments() {
             // Event expenses linked to this supplier (reimbursements)
             const linkedEventExpensesList = [];
             const eventExpenseReimbursements = { Shekel: 0, Dollar: 0, Euro: 0 };
-            events.forEach(ev => {
+            pastEvents.forEach(ev => {
                 (ev.expenses || []).forEach(exp => {
                     const expSupplierId = (exp.supplierId?._id || exp.supplierId)?.toString();
                     if (expSupplierId === sId) {
@@ -161,7 +165,7 @@ export default function Payments() {
         const eventExpenseReimbursements = { Shekel: 0, Dollar: 0, Euro: 0 };
         const linkedEventExpensesList = [];
 
-        events.forEach(ev => {
+        pastEvents.forEach(ev => {
             const evCurrency = ev.currency || 'Shekel';
             const eventSupplierCosts = (ev.participants || [])
                 .filter(part => !part.isSubstitute && (part.currency || 'Shekel') === evCurrency)
