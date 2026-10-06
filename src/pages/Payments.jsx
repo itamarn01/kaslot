@@ -83,9 +83,9 @@ export default function Payments() {
 
     const allLinkedSupplierIds = new Set(partners.flatMap(p => p.linkedSupplierIds ? p.linkedSupplierIds.map(s => s._id || s) : []));
 
-    // Future events are planning-only: they must not create balances until their date arrives
+    // Future and hidden events are planning-only: they must not create balances
     const todayEnd = (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999); })();
-    const pastEvents = events.filter(ev => new Date(ev.date) <= todayEnd);
+    const pastEvents = events.filter(ev => new Date(ev.date) <= todayEnd && !ev.hidden);
 
     // Build per-supplier balance (only suppliers NOT linked to any partner)
     const supplierBalances = suppliers

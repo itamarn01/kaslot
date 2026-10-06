@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
-import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch, FiDownload, FiUpload, FiSend, FiRefreshCw, FiLink, FiX, FiDollarSign } from 'react-icons/fi';
+import { FiPlus, FiCalendar, FiMapPin, FiPhone, FiChevronDown, FiChevronUp, FiEdit2, FiTrash2, FiSearch, FiDownload, FiUpload, FiSend, FiRefreshCw, FiLink, FiX, FiDollarSign, FiEye, FiEyeOff } from 'react-icons/fi';
 import Select from 'react-select';
 import { EventsSkeleton } from '../components/Skeletons';
 
@@ -193,6 +193,13 @@ export default function Events() {
                 fetchData();
             } catch (err) { console.error(err); }
         }
+    };
+
+    const handleToggleEventHidden = async (ev) => {
+        try {
+            await api.put(`/events/${ev._id}`, { hidden: !ev.hidden });
+            fetchData();
+        } catch (err) { console.error(err); }
     };
 
     const handleAddOrUpdateSupplierToEvent = async (e) => {
@@ -759,7 +766,7 @@ export default function Events() {
                                 const eventProfitForPartners = ev.totalPrice - nonSubstituteCosts - totalEventExpenses;
 
                                 return (
-                                    <div key={ev._id} className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                    <div key={ev._id} className={`bg-slate-800 rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-shadow ${ev.hidden ? 'border-slate-600 border-dashed opacity-60' : 'border-slate-700'}`}>
                                         <div
                                             className="p-5 flex flex-col md:flex-row justify-between items-start md:items-center cursor-pointer hover:bg-slate-700/50 transition gap-4"
                                             onClick={() => toggleEventExpand(ev._id)}
@@ -773,6 +780,14 @@ export default function Events() {
                                                             title="אירוע עתידי — התחזית מוצגת כאן בלבד ואינה נכנסת לדוחות, ליתרות ולתקציב עד שיגיע התאריך"
                                                         >
                                                             🔮 עתידי — לא בדוחות
+                                                        </span>
+                                                    )}
+                                                    {ev.hidden && (
+                                                        <span
+                                                            className="flex items-center gap-1 text-xs bg-slate-500/10 text-slate-300 px-2 py-0.5 rounded-full border border-slate-500/30 font-medium"
+                                                            title="אירוע מוסתר — מוצג כאן בלבד ואינו נכנס לדוחות, ליתרות ולתשלומים עד שתבטל את ההסתרה"
+                                                        >
+                                                            <FiEyeOff size={12} /> מוסתר — לא בדוחות
                                                         </span>
                                                     )}
                                                     {ev.fromGoogleCalendar && (
@@ -799,6 +814,13 @@ export default function Events() {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleToggleEventHidden(ev); }}
+                                                    className={`p-2 hover:bg-slate-600 rounded-lg transition ${ev.hidden ? 'text-amber-400 hover:text-amber-300' : 'text-slate-400 hover:text-slate-200'}`}
+                                                    title={ev.hidden ? 'בטל הסתרה — החזר את האירוע לדוחות ולתשלומים' : 'הסתר אירוע — הוצא אותו מהדוחות ומהתשלומים'}
+                                                >
+                                                    {ev.hidden ? <FiEye size={18} /> : <FiEyeOff size={18} />}
+                                                </button>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); openEventModal(ev); }}
                                                     className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-600 rounded-lg transition"

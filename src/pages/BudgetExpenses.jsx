@@ -753,11 +753,11 @@ export default function BudgetExpenses() {
 
       {/* ===== UNLINKED EVENT EXPENSES ===== */}
       {(() => {
-        // Future events are planning-only: their expenses are excluded until the event date arrives
+        // Future and hidden events are planning-only: their expenses are excluded
         const n = new Date();
         const todayEnd = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 23, 59, 59, 999);
         const unlinkedEventExpenses = events
-          .filter(ev => new Date(ev.date).getFullYear() === selectedYear && new Date(ev.date) <= todayEnd)
+          .filter(ev => new Date(ev.date).getFullYear() === selectedYear && new Date(ev.date) <= todayEnd && !ev.hidden)
           .flatMap(ev =>
             (ev.expenses || [])
               .filter(exp => !exp.partnerId && !exp.supplierId)
