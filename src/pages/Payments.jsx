@@ -13,6 +13,8 @@ export default function Payments() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedEntityId, setExpandedEntityId] = useState(null);
+    // Manual expand/collapse of cards auto-opened by a note match; reset on each new search
+    const [searchToggles, setSearchToggles] = useState({});
 
     // Payment modal (suppliers/partners)
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -262,8 +264,17 @@ export default function Payments() {
         };
     });
 
+    const filterByNote = (list, term) => (list || []).filter(pay => pay.note?.toLowerCase().includes(term));
+
+    // When matched only by note, notePayments holds the matching payments to display
+    const clientTerm = clientSearchTerm.toLowerCase();
     const filteredClientEvents = (clientSummary?.events || [])
-        .filter(ev => !clientSearchTerm || ev.title.toLowerCase().includes(clientSearchTerm.toLowerCase()))
+        .map(ev => {
+            if (!clientTerm || ev.title.toLowerCase().includes(clientTerm)) return ev;
+            const notePayments = filterByNote(ev.payments, clientTerm);
+            return notePayments.length > 0 ? { ...ev, notePayments } : null;
+        })
+        .filter(Boolean)
         .filter(ev => {
             if (clientBalanceFilter === 'balanced') return ev.balance <= 0;
             if (clientBalanceFilter === 'unbalanced') return ev.balance > 0;
@@ -271,11 +282,14 @@ export default function Payments() {
         });
 
     const allBalances = [...partnerBalances, ...supplierBalances];
+    const term = searchTerm.toLowerCase();
     const filteredBalances = allBalances
-        .filter(({ entity }) =>
-            entity.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            entity.displayRole.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+        .map(b => {
+            if (b.entity.name.toLowerCase().includes(term) || b.entity.displayRole.toLowerCase().includes(term)) return b;
+            const notePayments = filterByNote(b.entityPayments, term);
+            return notePayments.length > 0 ? { ...b, notePayments } : null;
+        })
+        .filter(Boolean)
         .filter(({ balance }) => {
             if (balanceFilter === 'balanced') return Object.values(balance).every(v => v <= 0);
             if (balanceFilter === 'unbalanced') return Object.values(balance).some(v => v > 0);
@@ -443,9 +457,9 @@ export default function Payments() {
                             <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder="חיפוש לפי שם..."
+                                placeholder="חיפוש לפי שם או הערה..."
                                 value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
+                                onChange={e => { setSearchTerm(e.target.value); setSearchToggles({}); }}
                                 className="w-full bg-slate-800 border border-slate-700 rounded-xl pr-10 pl-4 py-2.5 text-slate-100 focus:outline-none focus:border-blue-500 transition"
                             />
                         </div>
@@ -455,14 +469,18 @@ export default function Payments() {
                         {filteredBalances.length === 0 && (
                             <p className="text-center text-slate-500 py-16">לא נמצאו שותפים או ספקים.</p>
                         )}
-                        {filteredBalances.map(({ entity, type, id, totalExpected, totalPaid, totalDebt, balance, entityPayments, hasDebt, budgetDeduction, totalBandExpense, linkedExpenses, eventExpenseReimbursements, linkedEventExpensesList }) => {
-                            const isExpanded = expandedEntityId === id;
+                        {filteredBalances.map(({ entity, type, id, totalExpected, totalPaid, totalDebt, balance, entityPayments, notePayments, hasDebt, budgetDeduction, totalBandExpense, linkedExpenses, eventExpenseReimbursements, linkedEventExpensesList }) => {
+                            const isExpanded = notePayments ? (searchToggles[id] ?? true) : expandedEntityId === id;
+                            const shownPayments = notePayments || entityPayments;
+                            const toggleExpanded = () => notePayments
+                                ? setSearchToggles(t => ({ ...t, [id]: !isExpanded }))
+                                : setExpandedEntityId(isExpanded ? null : id);
                             const currencies = ['Shekel', 'Dollar', 'Euro'].filter(c => totalExpected[c] > 0 || totalPaid[c] > 0 || (totalDebt[c] || 0) > 0 || (c === 'Shekel' && totalBandExpense > 0) || (eventExpenseReimbursements?.[c] || 0) > 0);
                             return (
                                 <div key={id} className={`bg-slate-800 rounded-2xl border overflow-hidden transition-all ${hasDebt ? 'border-red-500/30' : 'border-slate-700'}`}>
                                     <div
                                         className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 cursor-pointer hover:bg-slate-700/40 transition"
-                                        onClick={() => setExpandedEntityId(isExpanded ? null : id)}
+                                        onClick={toggleExpanded}
                                     >
                                         <div className="flex items-center gap-3">
                                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ${hasDebt ? 'bg-gradient-to-br from-red-500 to-orange-500' : type === 'partner' ? 'bg-gradient-to-br from-violet-500 to-purple-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>
@@ -597,12 +615,15 @@ export default function Payments() {
                                             )}
 
                                             <div className="p-4">
-                                                <p className="text-xs text-slate-500 font-medium mb-3">היסטוריית תשלומים</p>
-                                                {entityPayments.length === 0 ? (
+                                                <p className="text-xs text-slate-500 font-medium mb-3">
+                                                    היסטוריית תשלומים
+                                                    {notePayments && <span className="mr-2 text-blue-400">(מוצגים {notePayments.length} מתוך {entityPayments.length} לפי ההערה)</span>}
+                                                </p>
+                                                {shownPayments.length === 0 ? (
                                                     <p className="text-slate-600 text-sm">אין תשלומים עדיין.</p>
                                                 ) : (
                                                     <div className="space-y-2">
-                                                        {entityPayments.map(pay => (
+                                                        {shownPayments.map(pay => (
                                                             <div key={pay._id} className={`flex justify-between items-center bg-slate-800 px-3 py-2.5 rounded-lg border ${pay.direction === 'debt' ? 'border-amber-500/30' : 'border-slate-700'}`}>
                                                                 <div className="flex items-center gap-2">
                                                                     <FiCreditCard size={14} className={pay.direction === 'debt' ? 'text-amber-500' : 'text-slate-500'} />
@@ -686,7 +707,7 @@ export default function Payments() {
                                 <FiSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input
                                     type="text"
-                                    placeholder="חיפוש לפי שם אירוע..."
+                                    placeholder="חיפוש לפי שם אירוע או הערה..."
                                     value={clientSearchTerm}
                                     onChange={e => setClientSearchTerm(e.target.value)}
                                     className="w-full bg-slate-800 border border-slate-700 rounded-xl pr-10 pl-4 py-2.5 text-slate-100 focus:outline-none focus:border-emerald-500 transition text-sm"
@@ -739,9 +760,14 @@ export default function Payments() {
                                         </div>
                                     </div>
 
+                                    {ev.notePayments && (
+                                        <p className="border-t border-slate-700 px-4 pt-2 text-xs text-blue-400">
+                                            מוצגים {ev.notePayments.length} מתוך {ev.payments.length} תשלומים לפי ההערה
+                                        </p>
+                                    )}
                                     {ev.payments && ev.payments.length > 0 && (
-                                        <div className="border-t border-slate-700 divide-y divide-slate-700/60">
-                                            {ev.payments.map(pay => (
+                                        <div className={`divide-y divide-slate-700/60 ${ev.notePayments ? '' : 'border-t border-slate-700'}`}>
+                                            {(ev.notePayments || ev.payments).map(pay => (
                                                 <div key={pay._id} className="px-4 py-3 flex justify-between items-center">
                                                     <div className="flex items-center gap-3">
                                                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${pay.type === 'advance' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'}`}>
